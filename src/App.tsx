@@ -48,9 +48,9 @@ export const App: React.FC = () => {
     setIsVotingOpen(metrics.isVotingOpen);
   }, [currentView]);
 
-  const handleVerifyStudent = (admissionNo: string, dob: string) => {
+  const handleVerifyStudent = (admissionNo: string) => {
     setAuthError(undefined);
-    const result = dbService.verifyStudent(admissionNo, dob);
+    const result = dbService.verifyStudent(admissionNo);
 
     if (result.error) {
       setAuthError(result.error);
@@ -67,9 +67,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleVerifyTeacher = (teacherId: string, pin: string) => {
+  const handleVerifyTeacher = (teacherId: string) => {
     setAuthError(undefined);
-    const result = dbService.verifyTeacher(teacherId, pin);
+    const result = dbService.verifyTeacher(teacherId);
 
     if (result.error) {
       setAuthError(result.error);

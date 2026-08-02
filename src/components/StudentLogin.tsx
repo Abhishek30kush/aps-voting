@@ -3,7 +3,7 @@ import { User, ShieldCheck, ArrowRight, AlertTriangle, Sparkles } from 'lucide-r
 import { dbService } from '../services/databaseService';
 
 interface StudentLoginProps {
-  onVerify: (admissionNo: string, dob: string) => void;
+  onVerify: (admissionNo: string) => void;
   error?: string;
   isLoading?: boolean;
 }
@@ -14,12 +14,11 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   isLoading
 }) => {
   const [admissionNo, setAdmissionNo] = useState('');
-  const [dob, setDob] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (admissionNo.trim()) {
-      onVerify(admissionNo, dob);
+      onVerify(admissionNo);
     }
   };
 
@@ -99,7 +98,6 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                 const selected = dbService.getStudents().find(s => s.admissionNo === e.target.value);
                 if (selected) {
                   setAdmissionNo(selected.admissionNo);
-                  setDob(selected.dob || '');
                 }
               }}
               className="w-full p-2.5 bg-slate-950 border border-slate-700 hover:border-amber-500/50 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-400"

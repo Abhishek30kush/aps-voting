@@ -3,7 +3,7 @@ import { Briefcase, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface TeacherLoginProps {
-  onVerify: (teacherId: string, pin: string) => void;
+  onVerify: (teacherId: string) => void;
   error?: string;
   isLoading?: boolean;
 }
@@ -14,12 +14,11 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
   isLoading
 }) => {
   const [teacherId, setTeacherId] = useState('');
-  const [pin, setPin] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (teacherId.trim()) {
-      onVerify(teacherId, pin);
+      onVerify(teacherId);
     }
   };
 
@@ -98,7 +97,6 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
                 const selected = dbService.getTeachers().find(t => t.teacherId === e.target.value);
                 if (selected) {
                   setTeacherId(selected.teacherId);
-                  setPin(selected.pin || selected.doj || selected.teacherId || '');
                 }
               }}
               className="w-full p-2.5 bg-slate-950 border border-slate-700 hover:border-blue-500/50 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-400"

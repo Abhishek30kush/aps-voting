@@ -63,22 +63,29 @@ class DatabaseService {
   }
 
   // --- STUDENT AUTHENTICATION & LOOKUP ---
-  public verifyStudent(admissionNo: string, dob: string): { student?: Student; error?: string } {
-    const cleanAdm = admissionNo.trim().toUpperCase();
-    const student = this.students.find(s => s.admissionNo.toUpperCase() === cleanAdm);
-
-    if (!student) {
-      return { error: 'Admission Number not found in Army Public School database. Please check your entry.' };
+  public verifyStudent(admissionNo: string): { student?: Student; error?: string } {
+    const rawInput = admissionNo.trim();
+    if (!rawInput) {
+      return { error: 'Please enter a valid Admission Number.' };
     }
 
-    if (student.dob !== dob.trim()) {
-      return { error: 'Date of Birth does not match our records for this Admission Number.' };
+    const cleanInput = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    // Match exact string OR normalized alphanumeric string
+    const student = this.students.find(s => {
+      const sAdm = (s.admissionNo || '').trim().toUpperCase();
+      const sAdmClean = sAdm.replace(/[^A-Z0-9]/g, '');
+      return sAdm === rawInput.toUpperCase() || sAdmClean === cleanInput;
+    });
+
+    if (!student) {
+      return { error: `Admission Number "${rawInput}" not found in Army Public School database. Please check your entry.` };
     }
 
     if (student.hasVoted) {
       return { 
         student, 
-        error: `Voting already completed! You cast your ballot on ${new Date(student.votedAt || '').toLocaleString() || 'record'}.` 
+        error: `Voting already completed! Student ${student.name} (${student.admissionNo}) has already cast their ballot.` 
       };
     }
 
@@ -86,22 +93,29 @@ class DatabaseService {
   }
 
   // --- TEACHER AUTHENTICATION & LOOKUP ---
-  public verifyTeacher(teacherId: string, pin: string): { teacher?: Teacher; error?: string } {
-    const cleanId = teacherId.trim().toUpperCase();
-    const teacher = this.teachers.find(t => t.teacherId.toUpperCase() === cleanId);
-
-    if (!teacher) {
-      return { error: 'Teacher Code not found. Please contact APS Admin.' };
+  public verifyTeacher(teacherId: string): { teacher?: Teacher; error?: string } {
+    const rawInput = teacherId.trim();
+    if (!rawInput) {
+      return { error: 'Please enter a valid Employee ID.' };
     }
 
-    if (teacher.pin !== pin.trim()) {
-      return { error: 'Security PIN / DOB is incorrect.' };
+    const cleanInput = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    // Match exact string OR normalized alphanumeric string
+    const teacher = this.teachers.find(t => {
+      const tId = (t.teacherId || '').trim().toUpperCase();
+      const tIdClean = tId.replace(/[^A-Z0-9]/g, '');
+      return tId === rawInput.toUpperCase() || tIdClean === cleanInput;
+    });
+
+    if (!teacher) {
+      return { error: `Teacher / Employee ID "${rawInput}" not found in APS Staff database. Please check your entry.` };
     }
 
     if (teacher.hasVoted) {
       return { 
         teacher, 
-        error: `Teacher ID ${teacher.teacherId} has already submitted votes on ${new Date(teacher.votedAt || '').toLocaleString()}.` 
+        error: `Voting already completed! Teacher ${teacher.name} (${teacher.teacherId}) has already cast their ballot.` 
       };
     }
 
