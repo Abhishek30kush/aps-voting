@@ -868,6 +868,127 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
             </div>
+
+            {importStatus.message && (
+              <div className={`mt-4 p-4 rounded-xl text-xs font-bold flex items-center justify-between border ${
+                importStatus.type === 'success' 
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40' 
+                  : 'bg-red-950/80 text-red-300 border-red-500/40'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {importStatus.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-red-400" />}
+                  <span>{importStatus.message}</span>
+                </div>
+                <button onClick={() => setImportStatus({ message: '', type: '' })} className="hover:opacity-80 text-sm font-mono">✕</button>
+              </div>
+            )}
+
+            {/* STAGED CSV PREVIEW & SUBMIT SECTION */}
+            {stagedCSV && (
+              <div className="mt-4 bg-slate-950 border border-amber-500/50 p-5 rounded-2xl space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <div>
+                      <h4 className="text-sm font-bold text-white">
+                        Ready to Submit {stagedCSV.type === 'students' ? 'Student' : 'Teacher'} Data
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        File: <span className="text-amber-300 font-mono font-bold">{stagedCSV.fileName}</span> ({stagedCSV.rows.length} total rows parsed)
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setStagedCSV(null)}
+                    className="text-xs text-slate-400 hover:text-red-400 underline font-semibold"
+                  >
+                    Clear File
+                  </button>
+                </div>
+
+                {/* Preview Table of First 4 Rows */}
+                <div className="overflow-x-auto border border-slate-800 rounded-xl max-h-48 overflow-y-auto">
+                  <table className="w-full text-left text-[11px] whitespace-nowrap">
+                    <thead className="bg-slate-900 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-2">#</th>
+                        {stagedCSV.type === 'students' ? (
+                          <>
+                            <th className="p-2">Admission No</th>
+                            <th className="p-2">Student Name</th>
+                            <th className="p-2">Class & Sec</th>
+                            <th className="p-2">Father Name</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="p-2">EMP ID</th>
+                            <th className="p-2">Staff Name</th>
+                            <th className="p-2">APPT</th>
+                            <th className="p-2">Type</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 bg-slate-950">
+                      {stagedCSV.rows.slice(0, 4).map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-900/60">
+                          <td className="p-2 font-mono text-slate-500">{idx + 1}</td>
+                          {stagedCSV.type === 'students' ? (
+                            <>
+                              <td className="p-2 font-mono font-bold text-amber-300">
+                                {row.admissionno || row.admission_no || row.admno || '-'}
+                              </td>
+                              <td className="p-2 font-bold text-white">
+                                {row.studentname || row.student_name || row.name || '-'}
+                              </td>
+                              <td className="p-2 text-slate-300">
+                                Class {row.classname || row.class || '10'}-{row.sectionname || row.section || 'A'}
+                              </td>
+                              <td className="p-2 text-slate-400">
+                                {row.fathername || row.father_name || '-'}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="p-2 font-mono font-bold text-emerald-300">
+                                {row.empid || row.emp_id || row.teacherid || '-'}
+                              </td>
+                              <td className="p-2 font-bold text-white">
+                                {row.empname || row.emp_name || row.name || '-'}
+                              </td>
+                              <td className="p-2 text-slate-300">
+                                {row.appt || row.designation || '-'}
+                              </td>
+                              <td className="p-2 text-slate-400">
+                                {row.emptype || row.emp_type || 'Regular'}
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* SUBMIT BUTTON */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setStagedCSV(null)}
+                    className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmCSVSubmit}
+                    className="py-2.5 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Submit & Import {stagedCSV.rows.length} Records to Database</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Directory Section with Dedicated Roster Tabs */}
