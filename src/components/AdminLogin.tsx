@@ -18,7 +18,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     if (passcode === 'admin123' || passcode === 'aps2025' || passcode === '1234') {
       onLoginSuccess();
     } else {
-      setError('Invalid Admin Passcode. Hint: Use default passcode "admin123".');
+      setError('Invalid Admin Passcode. Access Denied.');
     }
   };
 
@@ -62,7 +62,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                 setPasscode(e.target.value);
                 setError('');
               }}
-              placeholder="Enter passcode (Default: admin123)"
+              placeholder="Enter Admin Passcode"
               autoFocus
               className="w-full px-4 py-3 bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl text-white placeholder-slate-500 focus:outline-none text-center font-mono text-lg tracking-widest"
             />
@@ -76,10 +76,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
-
-        <div className="mt-6 text-center text-xs text-slate-500">
-          Demo Admin Passcode: <code className="text-amber-400 font-mono font-bold">admin123</code>
-        </div>
 
       </div>
     </div>
