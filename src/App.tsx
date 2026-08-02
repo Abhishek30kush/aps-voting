@@ -31,16 +31,20 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const checkHashRoute = () => {
-      const hash = window.location.hash;
-      const pathname = window.location.pathname;
-      if (hash === '#admin' || pathname === '/admin') {
+      const hash = window.location.hash.toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+      if (hash.includes('admin') || pathname.includes('admin')) {
         setShowAdminLoginModal(true);
       }
     };
 
     checkHashRoute();
     window.addEventListener('hashchange', checkHashRoute);
-    return () => window.removeEventListener('hashchange', checkHashRoute);
+    window.addEventListener('popstate', checkHashRoute);
+    return () => {
+      window.removeEventListener('hashchange', checkHashRoute);
+      window.removeEventListener('popstate', checkHashRoute);
+    };
   }, []);
 
   useEffect(() => {
