@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Calendar, ShieldCheck, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
+import { User, ShieldCheck, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface StudentLoginProps {
@@ -64,30 +64,14 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                 type="text"
                 value={admissionNo}
                 onChange={(e) => setAdmissionNo(e.target.value)}
-                placeholder="e.g. APS2024-001"
+                placeholder="Enter Admission No (e.g. APS2024-001)"
                 required
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition"
               />
             </div>
-          </div>
-
-          {/* Date of Birth */}
-          <div>
-            <label className="block text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">
-              Date of Birth (DOB)
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <Calendar className="w-5 h-5 text-amber-400/80" />
-              </div>
-              <input
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                required
-                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition"
-              />
-            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Enter your exact Admission Number as registered in school ERP records.
+            </p>
           </div>
 
           {/* Submit Button */}
@@ -96,7 +80,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
             disabled={isLoading || !admissionNo.trim()}
             className="w-full py-3.5 px-6 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition disabled:opacity-50 disabled:pointer-events-none"
           >
-            <span>Verify & Fetch Student Details</span>
+            <span>Verify Admission No. & Proceed to Vote</span>
             <ArrowRight className="w-5 h-5" />
           </button>
         </form>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, Key, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
+import { Briefcase, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface TeacherLoginProps {
@@ -53,7 +53,7 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
           {/* Teacher Code */}
           <div>
             <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-2">
-              Teacher Code / Unique ID
+              Teacher Code / Employee ID (EMP ID)
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -63,30 +63,14 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
                 type="text"
                 value={teacherId}
                 onChange={(e) => setTeacherId(e.target.value)}
-                placeholder="e.g. TEA-101"
+                placeholder="Enter Employee ID (e.g. TEA-101)"
                 required
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-blue-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
               />
             </div>
-          </div>
-
-          {/* PIN or DOB */}
-          <div>
-            <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-2">
-              Security PIN / DOB (Optional)
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <Key className="w-5 h-5 text-blue-400/80" />
-              </div>
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="YYYY-MM-DD or PIN"
-                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-blue-400 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
-              />
-            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Enter your exact Employee ID as registered in school ERP records.
+            </p>
           </div>
 
           {/* Submit Button */}
@@ -95,7 +79,7 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
             disabled={isLoading || !teacherId.trim()}
             className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600 hover:from-blue-400 hover:to-indigo-400 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition disabled:opacity-50"
           >
-            <span>Verify Teacher Profile</span>
+            <span>Verify Employee ID & Proceed to Vote</span>
             <ArrowRight className="w-5 h-5" />
           </button>
         </form>
