@@ -142,15 +142,15 @@ export const AdminDashboard: React.FC = () => {
     setIsSyncingFirebase(true);
     setImportStatus({ message: '🔄 Syncing student and teacher database to Firebase Cloud Firestore...', type: 'success' });
     try {
-      const { studentsSynced, teachersSynced } = await dbService.syncAllDataToFirebase();
-      if (studentsSynced || teachersSynced) {
+      const res = await dbService.syncAllDataToFirebase();
+      if (res.success) {
         setImportStatus({
           message: '🔥 Firebase Sync Complete! All student and teacher records have been saved to Firebase Firestore.',
           type: 'success'
         });
       } else {
         setImportStatus({
-          message: '⚠️ Firebase sync notice: Could not connect to Firebase Firestore or configuration is missing.',
+          message: `⚠️ Firebase sync error: ${res.error || 'Check Firestore Database status & rules in Firebase Console.'}`,
           type: 'error'
         });
       }
@@ -167,23 +167,23 @@ export const AdminDashboard: React.FC = () => {
 
     try {
       if (stagedCSV.type === 'students') {
-        const { added, updated, syncedToFirebase } = await dbService.bulkImportStudents(stagedCSV.rows);
+        const { added, updated, syncedToFirebase, firebaseError } = await dbService.bulkImportStudents(stagedCSV.rows);
         const fbStatus = syncedToFirebase 
           ? '🔥 Data saved & synced to Firebase Firestore database!' 
-          : '💾 Saved to Local Database (Firebase sync pending).';
+          : `💾 Saved locally (${firebaseError ? 'Firebase: ' + firebaseError : 'Firebase sync pending'}).`;
         setImportStatus({
           message: `🎉 Successfully imported Student ERP List! Added: ${added} new students, Updated: ${updated} existing records. ${fbStatus}`,
-          type: 'success'
+          type: syncedToFirebase ? 'success' : 'error'
         });
         setRosterView('students');
       } else {
-        const { added, updated, syncedToFirebase } = await dbService.bulkImportTeachers(stagedCSV.rows);
+        const { added, updated, syncedToFirebase, firebaseError } = await dbService.bulkImportTeachers(stagedCSV.rows);
         const fbStatus = syncedToFirebase 
           ? '🔥 Data saved & synced to Firebase Firestore database!' 
-          : '💾 Saved to Local Database (Firebase sync pending).';
+          : `💾 Saved locally (${firebaseError ? 'Firebase: ' + firebaseError : 'Firebase sync pending'}).`;
         setImportStatus({
           message: `🎉 Successfully imported Teacher & Staff ERP List! Added: ${added} new staff, Updated: ${updated} existing records. ${fbStatus}`,
-          type: 'success'
+          type: syncedToFirebase ? 'success' : 'error'
         });
         setRosterView('teachers');
       }

@@ -283,11 +283,13 @@ class DatabaseService {
   }
 
   // --- FIREBASE FIRESTORE SYNC HELPERS ---
-  public async syncStudentsToFirebase(studentList?: Student[]): Promise<boolean> {
-    if (!db) return false;
+  public async syncStudentsToFirebase(studentList?: Student[]): Promise<{ success: boolean; error?: string }> {
+    if (!db) {
+      return { success: false, error: 'Firebase Firestore DB object is not initialized.' };
+    }
     try {
       const list = studentList || this.students;
-      if (!list || list.length === 0) return true;
+      if (!list || list.length === 0) return { success: true };
 
       const BATCH_SIZE = 500;
       for (let i = 0; i < list.length; i += BATCH_SIZE) {
@@ -301,18 +303,20 @@ class DatabaseService {
         await batch.commit();
       }
       console.log(`Successfully synced ${list.length} students to Firebase Firestore.`);
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.error("Firebase Firestore Students Sync Error:", e);
-      return false;
+      return { success: false, error: e?.message || e?.code || String(e) };
     }
   }
 
-  public async syncTeachersToFirebase(teacherList?: Teacher[]): Promise<boolean> {
-    if (!db) return false;
+  public async syncTeachersToFirebase(teacherList?: Teacher[]): Promise<{ success: boolean; error?: string }> {
+    if (!db) {
+      return { success: false, error: 'Firebase Firestore DB object is not initialized.' };
+    }
     try {
       const list = teacherList || this.teachers;
-      if (!list || list.length === 0) return true;
+      if (!list || list.length === 0) return { success: true };
 
       const BATCH_SIZE = 500;
       for (let i = 0; i < list.length; i += BATCH_SIZE) {
@@ -326,43 +330,49 @@ class DatabaseService {
         await batch.commit();
       }
       console.log(`Successfully synced ${list.length} teachers to Firebase Firestore.`);
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.error("Firebase Firestore Teachers Sync Error:", e);
-      return false;
+      return { success: false, error: e?.message || e?.code || String(e) };
     }
   }
 
-  public async syncSingleStudentToFirebase(student: Student): Promise<boolean> {
-    if (!db) return false;
+  public async syncSingleStudentToFirebase(student: Student): Promise<{ success: boolean; error?: string }> {
+    if (!db) return { success: false, error: 'Firebase DB not initialized' };
     try {
       const ref = doc(db, 'students', student.id);
       const cleanPayload = JSON.parse(JSON.stringify(student));
       await setDoc(ref, cleanPayload, { merge: true });
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.error("Firebase sync single student error:", e);
-      return false;
+      return { success: false, error: e?.message || String(e) };
     }
   }
 
-  public async syncSingleTeacherToFirebase(teacher: Teacher): Promise<boolean> {
-    if (!db) return false;
+  public async syncSingleTeacherToFirebase(teacher: Teacher): Promise<{ success: boolean; error?: string }> {
+    if (!db) return { success: false, error: 'Firebase DB not initialized' };
     try {
       const ref = doc(db, 'teachers', teacher.id);
       const cleanPayload = JSON.parse(JSON.stringify(teacher));
       await setDoc(ref, cleanPayload, { merge: true });
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.error("Firebase sync single teacher error:", e);
-      return false;
+      return { success: false, error: e?.message || String(e) };
     }
   }
 
-  public async syncAllDataToFirebase(): Promise<{ studentsSynced: boolean; teachersSynced: boolean }> {
-    const studentsSynced = await this.syncStudentsToFirebase();
-    const teachersSynced = await this.syncTeachersToFirebase();
-    return { studentsSynced, teachersSynced };
+  public async syncAllDataToFirebase(): Promise<{ success: boolean; error?: string; studentsSynced: boolean; teachersSynced: boolean }> {
+    const studentRes = await this.syncStudentsToFirebase();
+    if (!studentRes.success) {
+      return { success: false, error: `Student sync failed: ${studentRes.error}`, studentsSynced: false, teachersSynced: false };
+    }
+    const teacherRes = await this.syncTeachersToFirebase();
+    if (!teacherRes.success) {
+      return { success: false, error: `Teacher sync failed: ${teacherRes.error}`, studentsSynced: true, teachersSynced: false };
+    }
+    return { success: true, studentsSynced: true, teachersSynced: true };
   }
 
   public async loadFromFirebase(): Promise<void> {
@@ -454,7 +464,7 @@ class DatabaseService {
   }
 
   // --- BULK IMPORT STUDENTS ---
-  public async bulkImportStudents(rawRows: Record<string, string>[]): Promise<{ added: number; updated: number; syncedToFirebase: boolean }> {
+  public async bulkImportStudents(rawRows: Record<string, string>[]): Promise<{ added: number; updated: number; syncedToFirebase: boolean; firebaseError?: string }> {
     let added = 0;
     let updated = 0;
     const affectedStudents: Student[] = [];
@@ -550,12 +560,12 @@ class DatabaseService {
     });
 
     this.saveStudents();
-    const syncedToFirebase = await this.syncStudentsToFirebase(affectedStudents);
-    return { added, updated, syncedToFirebase };
+    const syncRes = await this.syncStudentsToFirebase(affectedStudents);
+    return { added, updated, syncedToFirebase: syncRes.success, firebaseError: syncRes.error };
   }
 
   // --- BULK IMPORT TEACHERS ---
-  public async bulkImportTeachers(rawRows: Record<string, string>[]): Promise<{ added: number; updated: number; syncedToFirebase: boolean }> {
+  public async bulkImportTeachers(rawRows: Record<string, string>[]): Promise<{ added: number; updated: number; syncedToFirebase: boolean; firebaseError?: string }> {
     let added = 0;
     let updated = 0;
     const affectedTeachers: Teacher[] = [];
@@ -613,8 +623,8 @@ class DatabaseService {
     });
 
     this.saveTeachers();
-    const syncedToFirebase = await this.syncTeachersToFirebase(affectedTeachers);
-    return { added, updated, syncedToFirebase };
+    const syncRes = await this.syncTeachersToFirebase(affectedTeachers);
+    return { added, updated, syncedToFirebase: syncRes.success, firebaseError: syncRes.error };
   }
 
 
