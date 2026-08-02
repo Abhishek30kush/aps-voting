@@ -1,5 +1,7 @@
 import type { Student, Teacher, Candidate, VoteRecord, CouncilType, SystemState, PositionType, HouseType } from '../types';
 import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CANDIDATES, INITIAL_VOTE_RECORDS } from './mockData';
+import { doc, setDoc, getDocs, collection, deleteDoc, writeBatch } from 'firebase/firestore';
+import { db } from './firebase';
 
 const STORAGE_KEYS = {
   STUDENTS: 'aps_voting_students_v1',
@@ -18,6 +20,7 @@ class DatabaseService {
 
   constructor() {
     this.initLocalData();
+    this.loadFromFirebase().catch(err => console.warn("Initial Firebase load background notice:", err));
   }
 
   private initLocalData() {
@@ -279,6 +282,126 @@ class DatabaseService {
     this.saveCandidates();
   }
 
+  // --- FIREBASE FIRESTORE SYNC HELPERS ---
+  public async syncStudentsToFirebase(studentList?: Student[]): Promise<boolean> {
+    if (!db) return false;
+    try {
+      const list = studentList || this.students;
+      if (!list || list.length === 0) return true;
+
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < list.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = list.slice(i, i + BATCH_SIZE);
+        chunk.forEach(student => {
+          const ref = doc(db!, 'students', student.id);
+          const cleanPayload = JSON.parse(JSON.stringify(student));
+          batch.set(ref, cleanPayload, { merge: true });
+        });
+        await batch.commit();
+      }
+      console.log(`Successfully synced ${list.length} students to Firebase Firestore.`);
+      return true;
+    } catch (e) {
+      console.error("Firebase Firestore Students Sync Error:", e);
+      return false;
+    }
+  }
+
+  public async syncTeachersToFirebase(teacherList?: Teacher[]): Promise<boolean> {
+    if (!db) return false;
+    try {
+      const list = teacherList || this.teachers;
+      if (!list || list.length === 0) return true;
+
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < list.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = list.slice(i, i + BATCH_SIZE);
+        chunk.forEach(teacher => {
+          const ref = doc(db!, 'teachers', teacher.id);
+          const cleanPayload = JSON.parse(JSON.stringify(teacher));
+          batch.set(ref, cleanPayload, { merge: true });
+        });
+        await batch.commit();
+      }
+      console.log(`Successfully synced ${list.length} teachers to Firebase Firestore.`);
+      return true;
+    } catch (e) {
+      console.error("Firebase Firestore Teachers Sync Error:", e);
+      return false;
+    }
+  }
+
+  public async syncSingleStudentToFirebase(student: Student): Promise<boolean> {
+    if (!db) return false;
+    try {
+      const ref = doc(db, 'students', student.id);
+      const cleanPayload = JSON.parse(JSON.stringify(student));
+      await setDoc(ref, cleanPayload, { merge: true });
+      return true;
+    } catch (e) {
+      console.error("Firebase sync single student error:", e);
+      return false;
+    }
+  }
+
+  public async syncSingleTeacherToFirebase(teacher: Teacher): Promise<boolean> {
+    if (!db) return false;
+    try {
+      const ref = doc(db, 'teachers', teacher.id);
+      const cleanPayload = JSON.parse(JSON.stringify(teacher));
+      await setDoc(ref, cleanPayload, { merge: true });
+      return true;
+    } catch (e) {
+      console.error("Firebase sync single teacher error:", e);
+      return false;
+    }
+  }
+
+  public async syncAllDataToFirebase(): Promise<{ studentsSynced: boolean; teachersSynced: boolean }> {
+    const studentsSynced = await this.syncStudentsToFirebase();
+    const teachersSynced = await this.syncTeachersToFirebase();
+    return { studentsSynced, teachersSynced };
+  }
+
+  public async loadFromFirebase(): Promise<void> {
+    if (!db) return;
+    try {
+      const studentsSnap = await getDocs(collection(db, 'students'));
+      if (!studentsSnap.empty) {
+        const fbStudents: Student[] = [];
+        studentsSnap.forEach(docSnap => {
+          fbStudents.push(docSnap.data() as Student);
+        });
+        if (fbStudents.length > 0) {
+          const studentMap = new Map<string, Student>();
+          this.students.forEach(s => studentMap.set(s.id, s));
+          fbStudents.forEach(s => studentMap.set(s.id, s));
+          this.students = Array.from(studentMap.values());
+          this.saveStudents();
+        }
+      }
+
+      const teachersSnap = await getDocs(collection(db, 'teachers'));
+      if (!teachersSnap.empty) {
+        const fbTeachers: Teacher[] = [];
+        teachersSnap.forEach(docSnap => {
+          fbTeachers.push(docSnap.data() as Teacher);
+        });
+        if (fbTeachers.length > 0) {
+          const teacherMap = new Map<string, Teacher>();
+          this.teachers.forEach(t => teacherMap.set(t.id, t));
+          fbTeachers.forEach(t => teacherMap.set(t.id, t));
+          this.teachers = Array.from(teacherMap.values());
+          this.saveTeachers();
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load initial data from Firebase Firestore:", e);
+    }
+  }
+
   // --- STUDENT & TEACHER MANAGEMENT ---
   public addStudent(student: Omit<Student, 'id' | 'hasVoted'>): Student {
     const newStudent: Student = {
@@ -288,6 +411,7 @@ class DatabaseService {
     };
     this.students.push(newStudent);
     this.saveStudents();
+    this.syncSingleStudentToFirebase(newStudent);
     return newStudent;
   }
 
@@ -299,17 +423,24 @@ class DatabaseService {
     };
     this.teachers.push(newTeacher);
     this.saveTeachers();
+    this.syncSingleTeacherToFirebase(newTeacher);
     return newTeacher;
   }
 
   public deleteStudent(id: string) {
     this.students = this.students.filter(s => s.id !== id);
     this.saveStudents();
+    if (db) {
+      deleteDoc(doc(db, 'students', id)).catch(e => console.error("Firebase delete student error:", e));
+    }
   }
 
   public deleteTeacher(id: string) {
     this.teachers = this.teachers.filter(t => t.id !== id);
     this.saveTeachers();
+    if (db) {
+      deleteDoc(doc(db, 'teachers', id)).catch(e => console.error("Firebase delete teacher error:", e));
+    }
   }
 
   public clearAllStudents() {
@@ -323,9 +454,10 @@ class DatabaseService {
   }
 
   // --- BULK IMPORT STUDENTS ---
-  public bulkImportStudents(rawRows: Record<string, string>[]): { added: number; updated: number } {
+  public async bulkImportStudents(rawRows: Record<string, string>[]): Promise<{ added: number; updated: number; syncedToFirebase: boolean }> {
     let added = 0;
     let updated = 0;
+    const affectedStudents: Student[] = [];
 
     const validHouses: HouseType[] = ['Cariappa', 'Manekshaw', 'Thimayya', 'Vaidya'];
 
@@ -414,16 +546,19 @@ class DatabaseService {
         this.students.push(studentPayload);
         added++;
       }
+      affectedStudents.push(studentPayload);
     });
 
     this.saveStudents();
-    return { added, updated };
+    const syncedToFirebase = await this.syncStudentsToFirebase(affectedStudents);
+    return { added, updated, syncedToFirebase };
   }
 
   // --- BULK IMPORT TEACHERS ---
-  public bulkImportTeachers(rawRows: Record<string, string>[]): { added: number; updated: number } {
+  public async bulkImportTeachers(rawRows: Record<string, string>[]): Promise<{ added: number; updated: number; syncedToFirebase: boolean }> {
     let added = 0;
     let updated = 0;
+    const affectedTeachers: Teacher[] = [];
 
     rawRows.forEach((row, idx) => {
       const teacherId = (row.empid || row.emp_id || row.teacherid || row.teacher_id || row.id || row.code || row.sno || row.srno || '').trim().toUpperCase();
@@ -474,10 +609,12 @@ class DatabaseService {
         this.teachers.push(teacherPayload);
         added++;
       }
+      affectedTeachers.push(teacherPayload);
     });
 
     this.saveTeachers();
-    return { added, updated };
+    const syncedToFirebase = await this.syncTeachersToFirebase(affectedTeachers);
+    return { added, updated, syncedToFirebase };
   }
 
 
@@ -498,6 +635,9 @@ class DatabaseService {
     this.saveTeachers();
     this.saveCandidates();
     this.saveVotes();
+
+    this.syncStudentsToFirebase().catch(e => console.error("Sync students reset error:", e));
+    this.syncTeachersToFirebase().catch(e => console.error("Sync teachers reset error:", e));
   }
 
   public restoreDefaultDataset() {
@@ -511,7 +651,11 @@ class DatabaseService {
     this.saveTeachers();
     this.saveCandidates();
     this.saveVotes();
+
+    this.syncStudentsToFirebase().catch(e => console.error("Sync students default error:", e));
+    this.syncTeachersToFirebase().catch(e => console.error("Sync teachers default error:", e));
   }
 }
 
 export const dbService = new DatabaseService();
+
