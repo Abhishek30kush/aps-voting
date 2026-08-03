@@ -1,7 +1,41 @@
 import type { Student, Teacher, Candidate, VoteRecord, CouncilType, SystemState, PositionType, HouseType } from '../types';
 import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CANDIDATES, INITIAL_VOTE_RECORDS } from './mockData';
-import { doc, setDoc, getDocs, collection, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
+
+function normalizeDateVariants(str: string): string[] {
+  if (!str) return [];
+  const raw = str.trim();
+  const clean = raw.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+  const variants: string[] = [raw.toLowerCase(), clean];
+
+  const parts = raw.split(/[-/._\s]+/);
+  if (parts.length === 3) {
+    const [p1, p2, p3] = parts;
+    const pad = (s: string, len: number) => s.padStart(len, '0');
+    if (p1.length === 4) {
+      // YYYY-MM-DD
+      const yyyy = p1, mm = pad(p2, 2), dd = pad(p3, 2);
+      variants.push(`${yyyy}-${mm}-${dd}`);
+      variants.push(`${dd}-${mm}-${yyyy}`);
+      variants.push(`${dd}/${mm}/${yyyy}`);
+      variants.push(`${yyyy}/${mm}/${dd}`);
+      variants.push(`${dd}${mm}${yyyy}`);
+      variants.push(`${yyyy}${mm}${dd}`);
+    } else if (p3.length === 4) {
+      // DD-MM-YYYY
+      const dd = pad(p1, 2), mm = pad(p2, 2), yyyy = p3;
+      variants.push(`${yyyy}-${mm}-${dd}`);
+      variants.push(`${dd}-${mm}-${yyyy}`);
+      variants.push(`${dd}/${mm}/${yyyy}`);
+      variants.push(`${yyyy}/${mm}/${dd}`);
+      variants.push(`${dd}${mm}${yyyy}`);
+      variants.push(`${yyyy}${mm}${dd}`);
+    }
+  }
+
+  return Array.from(new Set(variants));
+}
 
 const STORAGE_KEYS = {
   STUDENTS: 'aps_voting_students_v1',
@@ -18,9 +52,12 @@ class DatabaseService {
   private votes: VoteRecord[] = [];
   private systemState: SystemState = { isVotingOpen: true, totalVotesCast: 0 };
 
+  /** Resolves when initial Firebase data load is complete */
+  public ready: Promise<void>;
+
   constructor() {
     this.initLocalData();
-    this.loadFromFirebase().catch(err => console.warn("Initial Firebase load background notice:", err));
+    this.ready = this.loadFromFirebase().catch(err => console.warn("Initial Firebase load background notice:", err));
   }
 
   private initLocalData() {
@@ -66,7 +103,7 @@ class DatabaseService {
   }
 
   // --- STUDENT AUTHENTICATION & LOOKUP ---
-  public verifyStudent(admissionNo: string): { student?: Student; error?: string } {
+  public verifyStudent(admissionNo: string, dob?: string): { student?: Student; error?: string } {
     const rawInput = admissionNo.trim();
     if (!rawInput) {
       return { error: 'Please enter a valid Admission Number.' };
@@ -85,6 +122,16 @@ class DatabaseService {
       return { error: `Admission Number "${rawInput}" not found in Army Public School database. Please check your entry.` };
     }
 
+    // DOB verification (second factor with flexible date format matching)
+    if (dob && student.dob) {
+      const inputVariants = normalizeDateVariants(dob);
+      const storedVariants = normalizeDateVariants(student.dob);
+      const isMatch = inputVariants.some(iv => storedVariants.includes(iv));
+      if (!isMatch) {
+        return { error: 'Date of Birth does not match our records. Please verify and try again.' };
+      }
+    }
+
     if (student.hasVoted) {
       return { 
         student, 
@@ -96,7 +143,7 @@ class DatabaseService {
   }
 
   // --- TEACHER AUTHENTICATION & LOOKUP ---
-  public verifyTeacher(teacherId: string): { teacher?: Teacher; error?: string } {
+  public verifyTeacher(teacherId: string, pin?: string): { teacher?: Teacher; error?: string } {
     const rawInput = teacherId.trim();
     if (!rawInput) {
       return { error: 'Please enter a valid Employee ID.' };
@@ -113,6 +160,16 @@ class DatabaseService {
 
     if (!teacher) {
       return { error: `Teacher / Employee ID "${rawInput}" not found in APS Staff database. Please check your entry.` };
+    }
+
+    // PIN verification (second factor with flexible date format matching)
+    if (pin && teacher.pin) {
+      const inputVariants = normalizeDateVariants(pin);
+      const storedVariants = normalizeDateVariants(teacher.pin);
+      const isMatch = inputVariants.some(iv => storedVariants.includes(iv));
+      if (!isMatch) {
+        return { error: 'Security PIN does not match our records. Please verify and try again.' };
+      }
     }
 
     if (teacher.hasVoted) {
@@ -135,14 +192,14 @@ class DatabaseService {
   }
 
   // --- SUBMIT VOTE ---
-  public submitVote(
+  public async submitVote(
     voterType: 'student' | 'teacher',
     voterId: string,
     voterName: string,
     council: CouncilType,
     selections: Record<PositionType, string>,
     voterClass?: number
-  ): { success: boolean; error?: string } {
+  ): Promise<{ success: boolean; error?: string }> {
     if (!this.systemState.isVotingOpen) {
       return { success: false, error: 'Voting process is currently CLOSED by Admin.' };
     }
@@ -159,6 +216,7 @@ class DatabaseService {
         this.students[idx].votedAt = timestamp;
         this.students[idx].votedCouncil = council;
         this.saveStudents();
+        this.syncSingleStudentToFirebase(this.students[idx]).catch(e => console.error('Firebase student vote sync error:', e));
       }
     } else {
       const idx = this.teachers.findIndex(t => t.teacherId.toUpperCase() === voterId.toUpperCase());
@@ -169,6 +227,7 @@ class DatabaseService {
         this.teachers[idx].hasVoted = true;
         this.teachers[idx].votedAt = timestamp;
         this.saveTeachers();
+        this.syncSingleTeacherToFirebase(this.teachers[idx]).catch(e => console.error('Firebase teacher vote sync error:', e));
       }
     }
 
@@ -196,6 +255,10 @@ class DatabaseService {
     this.votes.unshift(voteRecord);
     this.systemState.lastVoteTime = timestamp;
     this.saveVotes();
+
+    // Sync vote record and updated candidates to Firebase
+    await this.syncVoteToFirebase(voteRecord).catch(e => console.error('Firebase vote record sync error:', e));
+    await this.syncCandidatesToFirebase().catch(e => console.error('Firebase candidates sync error:', e));
 
     return { success: true };
   }
@@ -269,17 +332,28 @@ class DatabaseService {
     };
     this.candidates.push(newCand);
     this.saveCandidates();
+    this.syncSingleCandidateToFirebase(newCand);
     return newCand;
   }
 
   public deleteCandidate(id: string) {
     this.candidates = this.candidates.filter(c => c.id !== id);
     this.saveCandidates();
+    if (db) {
+      deleteDoc(doc(db, 'candidates', id)).catch(e => console.error("Firebase delete candidate error:", e));
+    }
   }
 
   public clearAllCandidates() {
     this.candidates = [];
     this.saveCandidates();
+    if (db) {
+      getDocs(collection(db, 'candidates')).then(snap => {
+        const batch = writeBatch(db!);
+        snap.forEach(docSnap => batch.delete(docSnap.ref));
+        return batch.commit();
+      }).catch(e => console.error("Firebase clear candidates error:", e));
+    }
   }
 
   // --- FIREBASE FIRESTORE SYNC HELPERS ---
@@ -363,6 +437,19 @@ class DatabaseService {
     }
   }
 
+  public async syncSingleCandidateToFirebase(candidate: Candidate): Promise<{ success: boolean; error?: string }> {
+    if (!db) return { success: false, error: 'Firebase DB not initialized' };
+    try {
+      const ref = doc(db, 'candidates', candidate.id);
+      const cleanPayload = JSON.parse(JSON.stringify(candidate));
+      await setDoc(ref, cleanPayload, { merge: true });
+      return { success: true };
+    } catch (e: any) {
+      console.error("Firebase sync single candidate error:", e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  }
+
   public async syncAllDataToFirebase(): Promise<{ success: boolean; error?: string; studentsSynced: boolean; teachersSynced: boolean }> {
     const studentRes = await this.syncStudentsToFirebase();
     if (!studentRes.success) {
@@ -378,35 +465,52 @@ class DatabaseService {
   public async loadFromFirebase(): Promise<void> {
     if (!db) return;
     try {
+      // Students — Firebase is source of truth: REPLACE local data
       const studentsSnap = await getDocs(collection(db, 'students'));
-      if (!studentsSnap.empty) {
-        const fbStudents: Student[] = [];
-        studentsSnap.forEach(docSnap => {
-          fbStudents.push(docSnap.data() as Student);
-        });
-        if (fbStudents.length > 0) {
-          const studentMap = new Map<string, Student>();
-          this.students.forEach(s => studentMap.set(s.id, s));
-          fbStudents.forEach(s => studentMap.set(s.id, s));
-          this.students = Array.from(studentMap.values());
-          this.saveStudents();
-        }
+      const fbStudents: Student[] = [];
+      studentsSnap.forEach(docSnap => {
+        fbStudents.push(docSnap.data() as Student);
+      });
+      this.students = fbStudents;
+      this.saveStudents();
+
+      // Teachers — Firebase is source of truth: REPLACE local data
+      const teachersSnap = await getDocs(collection(db, 'teachers'));
+      const fbTeachers: Teacher[] = [];
+      teachersSnap.forEach(docSnap => {
+        fbTeachers.push(docSnap.data() as Teacher);
+      });
+      this.teachers = fbTeachers;
+      this.saveTeachers();
+
+      // Candidates — Firebase is source of truth: REPLACE local data
+      const candidatesSnap = await getDocs(collection(db, 'candidates'));
+      const fbCandidates: Candidate[] = [];
+      candidatesSnap.forEach(docSnap => {
+        fbCandidates.push(docSnap.data() as Candidate);
+      });
+      this.candidates = fbCandidates;
+      this.saveCandidates();
+
+      // Votes — Firebase is source of truth: REPLACE local data
+      const votesSnap = await getDocs(collection(db, 'votes'));
+      const fbVotes: VoteRecord[] = [];
+      votesSnap.forEach(docSnap => {
+        fbVotes.push(docSnap.data() as VoteRecord);
+      });
+      // Sort by timestamp descending (newest first)
+      fbVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      this.votes = fbVotes;
+      this.saveVotes();
+
+      // System Config — Firebase is source of truth: REPLACE local systemState
+      const configSnap = await getDoc(doc(db, 'system', 'config'));
+      if (configSnap.exists()) {
+        this.systemState = configSnap.data() as SystemState;
+        localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
       }
 
-      const teachersSnap = await getDocs(collection(db, 'teachers'));
-      if (!teachersSnap.empty) {
-        const fbTeachers: Teacher[] = [];
-        teachersSnap.forEach(docSnap => {
-          fbTeachers.push(docSnap.data() as Teacher);
-        });
-        if (fbTeachers.length > 0) {
-          const teacherMap = new Map<string, Teacher>();
-          this.teachers.forEach(t => teacherMap.set(t.id, t));
-          fbTeachers.forEach(t => teacherMap.set(t.id, t));
-          this.teachers = Array.from(teacherMap.values());
-          this.saveTeachers();
-        }
-      }
+      console.log(`Firebase sync complete: ${fbStudents.length} students, ${fbTeachers.length} teachers, ${fbCandidates.length} candidates, ${fbVotes.length} votes loaded.`);
     } catch (e) {
       console.warn("Could not load initial data from Firebase Firestore:", e);
     }
@@ -509,7 +613,7 @@ class DatabaseService {
       const routeNo = (row.routeno || row.route_no || row.route || '').trim();
       const bloodGroup = (row.bloodgroup || row.blood_group || row.blood || '').trim();
       const dateOfAdmission = (row.dateofadmission || row.date_of_admission || '').trim();
-      const dateOfJoining = (row.dateofjoining || row.date_of_joining || '').trim();
+      const dateOfLeaving = (row.dateofleaving || row.date_of_leaving || row.dateofjoining || row.date_of_joining || '').trim();
       const status = (row.status || 'Active').trim();
       const address = (row.address || '').trim();
 
@@ -544,7 +648,8 @@ class DatabaseService {
         routeNo,
         bloodGroup,
         dateOfAdmission,
-        dateOfJoining,
+        dateOfLeaving,
+        dateOfJoining: dateOfLeaving,
         status,
         address
       };
@@ -576,6 +681,7 @@ class DatabaseService {
 
       if (!teacherId || !name) return; // Skip invalid row
 
+      const sNo = (row.sno || row.s_no || row.srno || row.slno || '').trim();
       const doj = (row.doj || row.dateofjoining || row.date_of_joining || '').trim();
       const doc = (row.doc || row.dateofconfirmation || row.date_of_confirmation || '').trim();
       const appt = (row.appt || row.appointment || row.designation || row.post || 'Teacher').trim();
@@ -602,6 +708,7 @@ class DatabaseService {
         votedAt: existingIndex !== -1 ? this.teachers[existingIndex].votedAt : undefined,
 
         // Teacher ERP Details
+        sNo,
         doj,
         doc,
         appt,
@@ -628,10 +735,49 @@ class DatabaseService {
   }
 
 
+  // --- FIREBASE SYNC: VOTES & CANDIDATES ---
+  public async syncVoteToFirebase(voteRecord: VoteRecord): Promise<{ success: boolean; error?: string }> {
+    if (!db) return { success: false, error: 'Firebase DB not initialized' };
+    try {
+      const ref = doc(db, 'votes', voteRecord.id);
+      const cleanPayload = JSON.parse(JSON.stringify(voteRecord));
+      await setDoc(ref, cleanPayload);
+      return { success: true };
+    } catch (e: any) {
+      console.error('Firebase vote sync error:', e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  }
+
+  public async syncCandidatesToFirebase(): Promise<{ success: boolean; error?: string }> {
+    if (!db) return { success: false, error: 'Firebase DB not initialized' };
+    try {
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < this.candidates.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = this.candidates.slice(i, i + BATCH_SIZE);
+        chunk.forEach(candidate => {
+          const ref = doc(db!, 'candidates', candidate.id);
+          const cleanPayload = JSON.parse(JSON.stringify(candidate));
+          batch.set(ref, cleanPayload, { merge: true });
+        });
+        await batch.commit();
+      }
+      return { success: true };
+    } catch (e: any) {
+      console.error('Firebase candidates sync error:', e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  }
+
   // --- SYSTEM CONTROLS ---
   public toggleVotingStatus(isOpen?: boolean) {
     this.systemState.isVotingOpen = isOpen !== undefined ? isOpen : !this.systemState.isVotingOpen;
     localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
+    if (db) {
+      setDoc(doc(db, 'system', 'config'), JSON.parse(JSON.stringify(this.systemState)), { merge: true })
+        .catch(e => console.error("Firebase sync system config error:", e));
+    }
   }
 
   public resetAllVotes() {

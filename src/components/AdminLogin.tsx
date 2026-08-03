@@ -15,7 +15,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passcode === 'admin123' || passcode === 'aps2025' || passcode === '1234') {
+    const validPasscode = import.meta.env.VITE_ADMIN_PASSCODE || 'aps2025';
+    if (passcode === validPasscode) {
       onLoginSuccess();
     } else {
       setError('Invalid Admin Passcode. Access Denied.');

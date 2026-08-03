@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { CheckCircle, ShieldCheck, LogOut } from 'lucide-react';
 import type { CouncilType } from '../types';
@@ -17,8 +17,8 @@ export const VoteSuccess: React.FC<VoteSuccessProps> = ({
   onReturnToLogin
 }) => {
   const [countdown, setCountdown] = useState(15);
-  const receiptId = 'APS-' + Math.floor(100000 + Math.random() * 900000);
-  const voteTime = new Date().toLocaleString();
+  const receiptIdRef = useRef('APS-' + Math.floor(100000 + Math.random() * 900000));
+  const voteTimeRef = useRef(new Date().toLocaleString());
 
   useEffect(() => {
     try {
@@ -84,7 +84,7 @@ export const VoteSuccess: React.FC<VoteSuccessProps> = ({
               <span className="text-xs font-bold text-white uppercase tracking-wider">Official Vote Receipt</span>
             </div>
             <span className="text-[11px] font-mono text-emerald-400 font-bold bg-emerald-950/80 px-2.5 py-1 rounded-md border border-emerald-500/30">
-              {receiptId}
+              {receiptIdRef.current}
             </span>
           </div>
 
@@ -103,7 +103,7 @@ export const VoteSuccess: React.FC<VoteSuccessProps> = ({
             </div>
             <div>
               <span className="text-slate-500 block text-[10px] uppercase font-bold">Timestamp</span>
-              <span className="text-slate-300 text-[11px] font-mono">{voteTime}</span>
+              <span className="text-slate-300 text-[11px] font-mono">{voteTimeRef.current}</span>
             </div>
           </div>
 
@@ -133,3 +133,4 @@ export const VoteSuccess: React.FC<VoteSuccessProps> = ({
     </div>
   );
 };
+

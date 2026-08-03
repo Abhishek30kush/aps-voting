@@ -51,6 +51,7 @@ export interface Student {
   routeNo?: string;
   bloodGroup?: string;
   dateOfAdmission?: string;
+  dateOfLeaving?: string;
   dateOfJoining?: string;
   status?: string; // Active / Inactive
   address?: string;
@@ -67,6 +68,7 @@ export interface Teacher {
   votedAt?: string;
 
   // Official APS Staff / Teacher ERP Extended Fields
+  sNo?: string; // Serial Number / S No
   doj?: string; // Date of Joining
   doc?: string; // Date of Confirmation / Contract
   appt?: string; // Appointment / Designation (e.g. PGT, TGT, Sports Officer, Vice Principal)
@@ -110,17 +112,17 @@ export interface SystemState {
   totalVotesCast: number;
 }
 
-export const POSITION_LABELS: Record<PositionType, { title: string; council: CouncilType; gender: 'M' | 'F' }> = {
-  head_boy: { title: 'Head Boy', council: 'senior', gender: 'M' },
-  head_girl: { title: 'Head Girl', council: 'senior', gender: 'F' },
-  vice_head_boy: { title: 'Vice Head Boy', council: 'senior', gender: 'M' },
-  vice_head_girl: { title: 'Vice Head Girl', council: 'senior', gender: 'F' },
-  sports_captain_boy: { title: 'Sports Captain (Boy)', council: 'senior', gender: 'M' },
-  sports_captain_girl: { title: 'Sports Captain (Girl)', council: 'senior', gender: 'F' },
-  vice_sports_captain_boy: { title: 'Vice Sports Captain (Boy)', council: 'senior', gender: 'M' },
-  vice_sports_captain_girl: { title: 'Vice Sports Captain (Girl)', council: 'senior', gender: 'F' },
-  discipline_incharge_boy: { title: 'Discipline Incharge (Boy)', council: 'senior', gender: 'M' },
-  discipline_incharge_girl: { title: 'Discipline Incharge (Girl)', council: 'senior', gender: 'F' },
+export const POSITION_LABELS: Record<PositionType, { title: string; gender: 'M' | 'F' }> = {
+  head_boy: { title: 'Head Boy', gender: 'M' },
+  head_girl: { title: 'Head Girl', gender: 'F' },
+  vice_head_boy: { title: 'Vice Head Boy', gender: 'M' },
+  vice_head_girl: { title: 'Vice Head Girl', gender: 'F' },
+  sports_captain_boy: { title: 'Sports Captain (Boy)', gender: 'M' },
+  sports_captain_girl: { title: 'Sports Captain (Girl)', gender: 'F' },
+  vice_sports_captain_boy: { title: 'Vice Sports Captain (Boy)', gender: 'M' },
+  vice_sports_captain_girl: { title: 'Vice Sports Captain (Girl)', gender: 'F' },
+  discipline_incharge_boy: { title: 'Discipline Incharge (Boy)', gender: 'M' },
+  discipline_incharge_girl: { title: 'Discipline Incharge (Girl)', gender: 'F' },
 };
 
 export const JUNIOR_POSITIONS: PositionType[] = [

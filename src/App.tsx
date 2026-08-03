@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { StudentLogin } from './components/StudentLogin';
 import { TeacherLogin } from './components/TeacherLogin';
@@ -28,6 +28,15 @@ export const App: React.FC = () => {
 
   const [isVotingOpen, setIsVotingOpen] = useState(true);
   const [ballotCandidates, setBallotCandidates] = useState<Candidate[]>([]);
+  const [, setDbDataReady] = useState(false);
+
+  useEffect(() => {
+    dbService.ready.then(() => {
+      setDbDataReady(true);
+      const metrics = dbService.getAdminMetrics();
+      setIsVotingOpen(metrics.isVotingOpen);
+    });
+  }, []);
 
   useEffect(() => {
     const checkHashRoute = () => {
@@ -52,9 +61,9 @@ export const App: React.FC = () => {
     setIsVotingOpen(metrics.isVotingOpen);
   }, [currentView]);
 
-  const handleVerifyStudent = (admissionNo: string) => {
+  const handleVerifyStudent = (admissionNo: string, dob: string) => {
     setAuthError(undefined);
-    const result = dbService.verifyStudent(admissionNo);
+    const result = dbService.verifyStudent(admissionNo, dob);
 
     if (result.error) {
       setAuthError(result.error);
@@ -71,9 +80,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleVerifyTeacher = (teacherId: string) => {
+  const handleVerifyTeacher = (teacherId: string, pin: string) => {
     setAuthError(undefined);
-    const result = dbService.verifyTeacher(teacherId);
+    const result = dbService.verifyTeacher(teacherId, pin);
 
     if (result.error) {
       setAuthError(result.error);
@@ -94,39 +103,44 @@ export const App: React.FC = () => {
     setCurrentView('ballot');
   };
 
-  const handleSubmitVote = (selections: Record<PositionType, string>) => {
+  const handleSubmitVote = async (selections: Record<PositionType, string>) => {
     setIsSubmitting(true);
 
-    let res;
-    if (currentStudent) {
-      res = dbService.submitVote(
-        'student',
-        currentStudent.admissionNo,
-        currentStudent.name,
-        assignedCouncil,
-        selections,
-        currentStudent.class
-      );
-    } else if (currentTeacher) {
-      res = dbService.submitVote(
-        'teacher',
-        currentTeacher.teacherId,
-        currentTeacher.name,
-        assignedCouncil,
-        selections
-      );
-    }
+    try {
+      let res;
+      if (currentStudent) {
+        res = await dbService.submitVote(
+          'student',
+          currentStudent.admissionNo,
+          currentStudent.name,
+          assignedCouncil,
+          selections,
+          currentStudent.class
+        );
+      } else if (currentTeacher) {
+        res = await dbService.submitVote(
+          'teacher',
+          currentTeacher.teacherId,
+          currentTeacher.name,
+          assignedCouncil,
+          selections
+        );
+      }
 
-    setIsSubmitting(false);
-
-    if (res && res.success) {
-      setCurrentView('success');
-    } else {
-      alert(res?.error || 'Failed to submit vote. Please try again.');
+      if (res && res.success) {
+        setCurrentView('success');
+      } else {
+        alert(res?.error || 'Failed to submit vote. Please try again.');
+      }
+    } catch (err) {
+      console.error('Vote submission error:', err);
+      alert('An error occurred while submitting your vote. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleResetSession = () => {
+  const handleResetSession = useCallback(() => {
     setCurrentStudent(undefined);
     setCurrentTeacher(undefined);
     setAuthError(undefined);
@@ -134,7 +148,7 @@ export const App: React.FC = () => {
       window.location.hash = '';
     }
     setCurrentView('login');
-  };
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950">
@@ -271,7 +285,7 @@ export const App: React.FC = () => {
 
       {/* Footer */}
       <footer className="py-4 border-t border-slate-900 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between max-w-7xl mx-auto w-full px-4">
-        <p>© 2025 Army Public School Voting System. Built with React & Tailwind CSS.</p>
+        <p>© 2025-2026 Army Public School Voting System. Built with React & Tailwind CSS.</p>
 
         <button
           onClick={() => {

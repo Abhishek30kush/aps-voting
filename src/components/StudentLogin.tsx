@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { User, ShieldCheck, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
+import { User, ShieldCheck, ArrowRight, AlertTriangle, Sparkles, Calendar } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface StudentLoginProps {
-  onVerify: (admissionNo: string) => void;
+  onVerify: (admissionNo: string, dob: string) => void;
   error?: string;
   isLoading?: boolean;
 }
@@ -14,11 +14,12 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   isLoading
 }) => {
   const [admissionNo, setAdmissionNo] = useState('');
+  const [dob, setDob] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (admissionNo.trim()) {
-      onVerify(admissionNo);
+      onVerify(admissionNo, dob);
     }
   };
 
@@ -68,8 +69,26 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition"
               />
             </div>
+          </div>
+
+          {/* Date of Birth */}
+          <div>
+            <label className="block text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">
+              Date of Birth (Verification)
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <Calendar className="w-5 h-5 text-amber-400/80" />
+              </div>
+              <input
+                type="date"
+                value={dob}
+                onChange={(e) => setDob(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition"
+              />
+            </div>
             <p className="text-[11px] text-slate-400 mt-1.5">
-              Enter your exact Admission Number as registered in school ERP records.
+              Enter your date of birth as registered in school ERP records.
             </p>
           </div>
 
@@ -79,7 +98,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
             disabled={isLoading || !admissionNo.trim()}
             className="w-full py-3.5 px-6 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition disabled:opacity-50 disabled:pointer-events-none"
           >
-            <span>Verify Admission No. & Proceed to Vote</span>
+            <span>Verify & Proceed to Vote</span>
             <ArrowRight className="w-5 h-5" />
           </button>
         </form>
@@ -98,6 +117,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                 const selected = dbService.getStudents().find(s => s.admissionNo === e.target.value);
                 if (selected) {
                   setAdmissionNo(selected.admissionNo);
+                  if (selected.dob) setDob(selected.dob);
                 }
               }}
               className="w-full p-2.5 bg-slate-950 border border-slate-700 hover:border-amber-500/50 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-400"
@@ -116,3 +136,4 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
     </div>
   );
 };
+

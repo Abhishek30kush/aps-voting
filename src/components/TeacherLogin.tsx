@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Briefcase, ArrowRight, AlertTriangle, Sparkles } from 'lucide-react';
+import { Briefcase, ArrowRight, AlertTriangle, Sparkles, KeyRound } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface TeacherLoginProps {
-  onVerify: (teacherId: string) => void;
+  onVerify: (teacherId: string, pin: string) => void;
   error?: string;
   isLoading?: boolean;
 }
@@ -14,11 +14,12 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
   isLoading
 }) => {
   const [teacherId, setTeacherId] = useState('');
+  const [pin, setPin] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (teacherId.trim()) {
-      onVerify(teacherId);
+      onVerify(teacherId, pin);
     }
   };
 
@@ -35,7 +36,7 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
             </div>
           </div>
           <h2 className="text-2xl font-bold text-white tracking-wide">Teacher Authentication</h2>
-          <p className="text-sm text-slate-400 mt-1">Enter your Teacher Security Code & PIN</p>
+          <p className="text-sm text-slate-400 mt-1">Enter your Employee ID & Security PIN</p>
         </div>
 
         {error && (
@@ -67,8 +68,27 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-blue-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
               />
             </div>
+          </div>
+
+          {/* Security PIN */}
+          <div>
+            <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-2">
+              Security PIN / DOB
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <KeyRound className="w-5 h-5 text-blue-400/80" />
+              </div>
+              <input
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder="Enter your Security PIN"
+                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-blue-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+              />
+            </div>
             <p className="text-[11px] text-slate-400 mt-1.5">
-              Enter your exact Employee ID as registered in school ERP records.
+              Enter your Security PIN as assigned by the school administration.
             </p>
           </div>
 
@@ -97,6 +117,7 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
                 const selected = dbService.getTeachers().find(t => t.teacherId === e.target.value);
                 if (selected) {
                   setTeacherId(selected.teacherId);
+                  if (selected.pin) setPin(selected.pin);
                 }
               }}
               className="w-full p-2.5 bg-slate-950 border border-slate-700 hover:border-blue-500/50 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-400"
@@ -115,3 +136,4 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
     </div>
   );
 };
+

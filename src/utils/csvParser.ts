@@ -56,7 +56,7 @@ function parseCSVLine(line: string, delimiter: string = ','): string[] {
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
 
-    if (char === '"' || char === "'") {
+    if (char === '"') {
       if (inQuotes && line[i + 1] === char) {
         current += char;
         i++;
@@ -117,7 +117,7 @@ export function getSampleStudentCSV(): string {
     'Route No',
     'Blood Group',
     'Date of Admission',
-    'Date of Joining',
+    'Date of Leaving',
     'Status',
     'Address'
   ];
