@@ -3,48 +3,103 @@ import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CANDIDATES, INITIAL_VOTE_RE
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 
+const MONTH_MAP: Record<string, string> = {
+  jan: '01', january: '01',
+  feb: '02', february: '02',
+  mar: '03', march: '03',
+  apr: '04', april: '04',
+  may: '05',
+  jun: '06', june: '06',
+  jul: '07', july: '07',
+  aug: '08', august: '08',
+  sep: '09', september: '09',
+  oct: '10', october: '10',
+  nov: '11', november: '11',
+  dec: '12', december: '12'
+};
+
+const NUM_TO_MONTH_SHORT: Record<string, string> = {
+  '01': 'jan', '02': 'feb', '03': 'mar', '04': 'apr', '05': 'may', '06': 'jun',
+  '07': 'jul', '08': 'aug', '09': 'sep', '10': 'oct', '11': 'nov', '12': 'dec'
+};
+
 function normalizeDateVariants(str: string): string[] {
   if (!str) return [];
-  const raw = str.trim();
-  const clean = raw.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-  const variants: string[] = [raw.toLowerCase(), clean];
+  const raw = str.trim().toLowerCase();
+  const clean = raw.replace(/[^0-9a-z]/g, '');
+  const variants: string[] = [raw, clean];
 
   const parts = raw.split(/[-/._\s]+/);
   if (parts.length === 3) {
     const [p1, p2, p3] = parts;
     const pad = (s: string, len: number) => s.padStart(len, '0');
-    if (p1.length === 4) {
-      // YYYY-MM-DD
-      const yyyy = p1, mm = pad(p2, 2), dd = pad(p3, 2);
-      variants.push(`${yyyy}-${mm}-${dd}`);
-      variants.push(`${dd}-${mm}-${yyyy}`);
-      variants.push(`${mm}-${dd}-${yyyy}`);
-      variants.push(`${dd}/${mm}/${yyyy}`);
-      variants.push(`${mm}/${dd}/${yyyy}`);
-      variants.push(`${yyyy}/${mm}/${dd}`);
-      variants.push(`${dd}${mm}${yyyy}`);
-      variants.push(`${yyyy}${mm}${dd}`);
-    } else if (p3.length === 4) {
-      // DD-MM-YYYY or MM-DD-YYYY
-      const v1 = pad(p1, 2), v2 = pad(p2, 2), yyyy = p3;
-      variants.push(`${yyyy}-${v2}-${v1}`);
-      variants.push(`${yyyy}-${v1}-${v2}`);
-      variants.push(`${v1}-${v2}-${yyyy}`);
-      variants.push(`${v2}-${v1}-${yyyy}`);
-      variants.push(`${v1}/${v2}/${yyyy}`);
-      variants.push(`${v2}/${v1}/${yyyy}`);
-      variants.push(`${yyyy}/${v2}/${v1}`);
-      variants.push(`${v1}${v2}${yyyy}`);
-      variants.push(`${yyyy}${v2}${v1}`);
-    } else if (p3.length === 2) {
-      const v1 = pad(p1, 2), v2 = pad(p2, 2), yyyy = "20" + p3;
-      variants.push(`${yyyy}-${v2}-${v1}`);
-      variants.push(`${v1}-${v2}-${yyyy}`);
-      variants.push(`${v1}/${v2}/${yyyy}`);
+
+    let monthNum = '';
+    let dayNum = '';
+    let yearNum = '';
+
+    if (MONTH_MAP[p2]) {
+      monthNum = MONTH_MAP[p2];
+      dayNum = pad(p1, 2);
+      yearNum = p3.length === 2 ? '20' + p3 : p3;
+    } else if (MONTH_MAP[p1]) {
+      monthNum = MONTH_MAP[p1];
+      dayNum = pad(p2, 2);
+      yearNum = p3.length === 2 ? '20' + p3 : p3;
+    } else if (MONTH_MAP[p3]) {
+      monthNum = MONTH_MAP[p3];
+      dayNum = pad(p2, 2);
+      yearNum = p1.length === 2 ? '20' + p1 : p1;
+    } else {
+      if (p1.length === 4) {
+        yearNum = p1;
+        monthNum = pad(p2, 2);
+        dayNum = pad(p3, 2);
+      } else if (p3.length === 4 || p3.length === 2) {
+        yearNum = p3.length === 2 ? '20' + p3 : p3;
+        const v1 = pad(p1, 2);
+        const v2 = pad(p2, 2);
+        
+        [ [v1, v2], [v2, v1] ].forEach(([d, m]) => {
+          variants.push(`${yearNum}-${m}-${d}`);
+          variants.push(`${d}-${m}-${yearNum}`);
+          variants.push(`${d}/${m}/${yearNum}`);
+          variants.push(`${m}/${d}/${yearNum}`);
+          variants.push(`${d}${m}${yearNum}`);
+          variants.push(`${yearNum}${m}${d}`);
+          
+          const monthShort = NUM_TO_MONTH_SHORT[m];
+          if (monthShort) {
+            variants.push(`${d}-${monthShort}-${yearNum}`);
+            variants.push(`${d}/${monthShort}/${yearNum}`);
+            variants.push(`${d} ${monthShort} ${yearNum}`);
+            variants.push(`${d}${monthShort}${yearNum}`);
+          }
+        });
+      }
+    }
+
+    if (yearNum && monthNum && dayNum) {
+      variants.push(`${yearNum}-${monthNum}-${dayNum}`);
+      variants.push(`${dayNum}-${monthNum}-${yearNum}`);
+      variants.push(`${monthNum}-${dayNum}-${yearNum}`);
+      variants.push(`${dayNum}/${monthNum}/${yearNum}`);
+      variants.push(`${monthNum}/${dayNum}/${yearNum}`);
+      variants.push(`${yearNum}/${monthNum}/${dayNum}`);
+      variants.push(`${dayNum}${monthNum}${yearNum}`);
+      variants.push(`${yearNum}${monthNum}${dayNum}`);
+
+      const monthShort = NUM_TO_MONTH_SHORT[monthNum];
+      if (monthShort) {
+        variants.push(`${dayNum}-${monthShort}-${yearNum}`);
+        variants.push(`${dayNum}/${monthShort}/${yearNum}`);
+        variants.push(`${dayNum} ${monthShort} ${yearNum}`);
+        variants.push(`${dayNum}${monthShort}${yearNum}`);
+      }
     }
   }
 
-  return Array.from(new Set(variants));
+  return Array.from(new Set(variants.filter(Boolean)));
 }
 
 const STORAGE_KEYS = {
