@@ -219,24 +219,17 @@ export const VotingBallot: React.FC<VotingBallotProps> = ({
                     )}
 
                     <div>
-                      <div className="flex items-center gap-4 mb-4">
-                        <img
-                          src={candidate.photoUrl}
-                          alt={candidate.name}
-                          className="w-16 h-16 rounded-xl object-cover border-2 border-amber-500/40 shadow-md"
-                        />
-                        <div>
-                          <h4 className="text-base font-bold text-white leading-tight">
-                            {candidate.name}
-                          </h4>
-                          <div className="text-xs text-slate-400 mt-0.5">
-                            Class {candidate.class}-{candidate.section}
-                          </div>
-                          <div className="mt-1.5 flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getHouseBadge(candidate.house)}`}>
-                              {candidate.house} House
-                            </span>
-                          </div>
+                      <div className="mb-4">
+                        <h4 className="text-base font-bold text-white leading-tight">
+                          {candidate.name}
+                        </h4>
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          Class {candidate.class}-{candidate.section}
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getHouseBadge(candidate.house)}`}>
+                            {candidate.house} House
+                          </span>
                         </div>
                       </div>
 
@@ -325,12 +318,9 @@ export const VotingBallot: React.FC<VotingBallotProps> = ({
                         {posInfo.title}
                       </div>
                       {cand ? (
-                        <div className="flex items-center gap-3 mt-1">
-                          <img src={cand.photoUrl} alt={cand.name} className="w-8 h-8 rounded-lg object-cover" />
-                          <div>
-                            <div className="text-sm font-bold text-white">{cand.name}</div>
-                            <div className="text-[10px] text-slate-400">Class {cand.class}-{cand.section} • {cand.house} House</div>
-                          </div>
+                        <div className="mt-1">
+                          <div className="text-sm font-bold text-white">{cand.name}</div>
+                          <div className="text-[10px] text-slate-400">Class {cand.class}-{cand.section} • {cand.house} House</div>
                         </div>
                       ) : (
                         <div className="text-xs text-red-400 italic mt-1">No candidate selected for this position</div>
