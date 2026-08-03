@@ -551,7 +551,6 @@ export const AdminDashboard: React.FC = () => {
                     <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
                       {topCand ? (
                         <>
-                          <img src={topCand.photoUrl} alt={topCand.name} className="w-12 h-12 rounded-xl object-cover border border-amber-500/40" />
                           <div className="flex-1 min-w-0">
                             <div className="text-[10px] text-amber-400 font-bold uppercase">{item.title}</div>
                             <div className="text-sm font-bold text-white truncate">{topCand.name}</div>
@@ -762,13 +761,10 @@ export const AdminDashboard: React.FC = () => {
                     <Trash2 className="w-4 h-4" />
                   </button>
 
-                  <div className="flex items-center gap-3 mb-3">
-                    <img src={candidate.photoUrl} alt={candidate.name} className="w-12 h-12 rounded-xl object-cover border border-amber-500/40" />
-                    <div>
-                      <div className="font-bold text-white text-sm">{candidate.name}</div>
-                      <div className="text-[10px] text-amber-400 font-bold uppercase">{POSITION_LABELS[candidate.position]?.title}</div>
-                      <div className="text-[10px] text-slate-400">Class {candidate.class}-{candidate.section} • {candidate.house} House</div>
-                    </div>
+                  <div className="mb-3">
+                    <div className="font-bold text-white text-sm">{candidate.name}</div>
+                    <div className="text-[10px] text-amber-400 font-bold uppercase">{POSITION_LABELS[candidate.position]?.title}</div>
+                    <div className="text-[10px] text-slate-400">Class {candidate.class}-{candidate.section} • {candidate.house} House</div>
                   </div>
 
                   <div className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 mb-2">
