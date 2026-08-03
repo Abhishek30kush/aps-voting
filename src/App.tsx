@@ -16,7 +16,15 @@ type AppView = 'login' | 'confirm' | 'ballot' | 'success' | 'admin';
 
 export const App: React.FC = () => {
   const [roleTab, setRoleTab] = useState<RoleTab>('student');
-  const [currentView, setCurrentView] = useState<AppView>('login');
+  const [currentView, setCurrentView] = useState<AppView>(() => {
+    const isAuth = sessionStorage.getItem('aps_admin_authenticated') === 'true';
+    const hash = window.location.hash.toLowerCase();
+    const pathname = window.location.pathname.toLowerCase();
+    if (isAuth || hash.includes('admin') || pathname.includes('admin')) {
+      return isAuth ? 'admin' : 'login';
+    }
+    return 'login';
+  });
 
   const [currentStudent, setCurrentStudent] = useState<Student | undefined>();
   const [currentTeacher, setCurrentTeacher] = useState<Teacher | undefined>();
@@ -42,8 +50,13 @@ export const App: React.FC = () => {
     const checkHashRoute = () => {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
+      const isAuth = sessionStorage.getItem('aps_admin_authenticated') === 'true';
       if (hash.includes('admin') || pathname.includes('admin')) {
-        setShowAdminLoginModal(true);
+        if (isAuth) {
+          setCurrentView('admin');
+        } else {
+          setShowAdminLoginModal(true);
+        }
       }
     };
 
@@ -144,6 +157,8 @@ export const App: React.FC = () => {
     setCurrentStudent(undefined);
     setCurrentTeacher(undefined);
     setAuthError(undefined);
+    setShowAdminLoginModal(false);
+    sessionStorage.removeItem('aps_admin_authenticated');
     if (window.location.hash === '#admin') {
       window.location.hash = '';
     }
@@ -271,6 +286,7 @@ export const App: React.FC = () => {
       {showAdminLoginModal && (
         <AdminLogin
           onLoginSuccess={() => {
+            sessionStorage.setItem('aps_admin_authenticated', 'true');
             setShowAdminLoginModal(false);
             setCurrentView('admin');
           }}
