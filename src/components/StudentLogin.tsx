@@ -81,14 +81,15 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                 <Calendar className="w-5 h-5 text-amber-400/80" />
               </div>
               <input
-                type="date"
+                type="text"
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
+                placeholder="DD-MM-YYYY (e.g. 08-08-2019 or 2019-08-08)"
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition"
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-1.5">
-              Enter your date of birth as registered in school ERP records.
+              Enter date of birth as registered in school ERP (e.g. 08-08-2019 or 2019-08-08).
             </p>
           </div>
 

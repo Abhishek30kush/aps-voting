@@ -18,19 +18,29 @@ function normalizeDateVariants(str: string): string[] {
       const yyyy = p1, mm = pad(p2, 2), dd = pad(p3, 2);
       variants.push(`${yyyy}-${mm}-${dd}`);
       variants.push(`${dd}-${mm}-${yyyy}`);
+      variants.push(`${mm}-${dd}-${yyyy}`);
       variants.push(`${dd}/${mm}/${yyyy}`);
+      variants.push(`${mm}/${dd}/${yyyy}`);
       variants.push(`${yyyy}/${mm}/${dd}`);
       variants.push(`${dd}${mm}${yyyy}`);
       variants.push(`${yyyy}${mm}${dd}`);
     } else if (p3.length === 4) {
-      // DD-MM-YYYY
-      const dd = pad(p1, 2), mm = pad(p2, 2), yyyy = p3;
-      variants.push(`${yyyy}-${mm}-${dd}`);
-      variants.push(`${dd}-${mm}-${yyyy}`);
-      variants.push(`${dd}/${mm}/${yyyy}`);
-      variants.push(`${yyyy}/${mm}/${dd}`);
-      variants.push(`${dd}${mm}${yyyy}`);
-      variants.push(`${yyyy}${mm}${dd}`);
+      // DD-MM-YYYY or MM-DD-YYYY
+      const v1 = pad(p1, 2), v2 = pad(p2, 2), yyyy = p3;
+      variants.push(`${yyyy}-${v2}-${v1}`);
+      variants.push(`${yyyy}-${v1}-${v2}`);
+      variants.push(`${v1}-${v2}-${yyyy}`);
+      variants.push(`${v2}-${v1}-${yyyy}`);
+      variants.push(`${v1}/${v2}/${yyyy}`);
+      variants.push(`${v2}/${v1}/${yyyy}`);
+      variants.push(`${yyyy}/${v2}/${v1}`);
+      variants.push(`${v1}${v2}${yyyy}`);
+      variants.push(`${yyyy}${v2}${v1}`);
+    } else if (p3.length === 2) {
+      const v1 = pad(p1, 2), v2 = pad(p2, 2), yyyy = "20" + p3;
+      variants.push(`${yyyy}-${v2}-${v1}`);
+      variants.push(`${v1}-${v2}-${yyyy}`);
+      variants.push(`${v1}/${v2}/${yyyy}`);
     }
   }
 
@@ -109,6 +119,10 @@ class DatabaseService {
       return { error: 'Please enter a valid Admission Number.' };
     }
 
+    if (this.students.length === 0) {
+      return { error: 'Student database is currently empty in Firebase. Please log in to Admin Dashboard and upload the Students CSV list.' };
+    }
+
     const cleanInput = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
     
     // Match exact string OR normalized alphanumeric string
@@ -119,7 +133,7 @@ class DatabaseService {
     });
 
     if (!student) {
-      return { error: `Admission Number "${rawInput}" not found in Army Public School database. Please check your entry.` };
+      return { error: `Admission Number "${rawInput}" not found in Army Public School database. Please make sure this student is uploaded via Admin CSV Import.` };
     }
 
     // DOB verification (second factor with flexible date format matching)
@@ -147,6 +161,10 @@ class DatabaseService {
     const rawInput = teacherId.trim();
     if (!rawInput) {
       return { error: 'Please enter a valid Employee ID.' };
+    }
+
+    if (this.teachers.length === 0) {
+      return { error: 'Teacher database is currently empty in Firebase. Please log in to Admin Dashboard and upload the Teachers CSV list.' };
     }
 
     const cleanInput = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -593,7 +611,12 @@ class DatabaseService {
       const parsedRoll = parseInt(row.rollno || row.roll || row.roll_no || '1', 10);
       const rollNo = isNaN(parsedRoll) ? 1 : parsedRoll;
 
-      const dob = (row.dateofbirth || row.date_of_birth || row.dob || row.birthdate || '2010-01-01').trim();
+      // Flexible DOB matching for CSV headers like "Date of Birth", "DOB", "D.O.B", "Date_of_Birth", "DOB(DD-MM-YYYY)", etc.
+      const rawDobKey = Object.keys(row).find(k => 
+        k.includes('dob') || k.includes('birth') || k.includes('dateof') || k.includes('bday')
+      );
+      const dobRaw = (rawDobKey ? row[rawDobKey] : '') || row.dateofbirth || row.date_of_birth || row.dob || row.birthdate || '';
+      const dob = dobRaw.trim();
       const section = (row.sectionname || row.section_name || row.section || row.sec || 'A').trim().toUpperCase();
 
       // Extended Official ERP fields from image format
