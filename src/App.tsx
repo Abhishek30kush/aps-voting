@@ -117,11 +117,14 @@ export const App: React.FC = () => {
   };
 
   const handleSubmitVote = async (selections: Record<PositionType, string>) => {
+    console.log('[App] handleSubmitVote called with selections:', selections);
+    console.log('[App] currentStudent:', currentStudent?.admissionNo, '| currentTeacher:', currentTeacher?.teacherId);
     setIsSubmitting(true);
 
     try {
       let res;
       if (currentStudent) {
+        console.log('[App] Submitting student vote...');
         res = await dbService.submitVote(
           'student',
           currentStudent.admissionNo,
@@ -131,6 +134,7 @@ export const App: React.FC = () => {
           currentStudent.class
         );
       } else if (currentTeacher) {
+        console.log('[App] Submitting teacher vote...');
         res = await dbService.submitVote(
           'teacher',
           currentTeacher.teacherId,
@@ -138,7 +142,15 @@ export const App: React.FC = () => {
           assignedCouncil,
           selections
         );
+      } else {
+        console.error('[App] No current student or teacher found!');
+        alert('Session expired. Please login again.');
+        setIsSubmitting(false);
+        handleResetSession();
+        return;
       }
+
+      console.log('[App] Vote submission result:', res);
 
       if (res && res.success) {
         setCurrentView('success');
@@ -146,7 +158,7 @@ export const App: React.FC = () => {
         alert(res?.error || 'Failed to submit vote. Please try again.');
       }
     } catch (err) {
-      console.error('Vote submission error:', err);
+      console.error('[App] Vote submission error:', err);
       alert('An error occurred while submitting your vote. Please try again.');
     } finally {
       setIsSubmitting(false);

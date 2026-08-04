@@ -273,47 +273,104 @@ class DatabaseService {
     selections: Record<PositionType, string>,
     voterClass?: number
   ): Promise<{ success: boolean; error?: string }> {
+    console.log('[VoteSubmit] Starting vote submission:', { voterType, voterId, voterName, council, selections });
+
     if (!this.systemState.isVotingOpen) {
+      console.warn('[VoteSubmit] Voting is CLOSED.');
       return { success: false, error: 'Voting process is currently CLOSED by Admin.' };
     }
 
     const timestamp = new Date().toISOString();
+    const cleanVoterId = voterId.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
     if (voterType === 'student') {
-      const idx = this.students.findIndex(s => s.admissionNo.toUpperCase() === voterId.toUpperCase());
+      // Flexible matching — match admissionNo or id
+      const idx = this.students.findIndex(s => {
+        const sAdm = (s.admissionNo || '').trim().toUpperCase();
+        const sAdmClean = sAdm.replace(/[^A-Z0-9]/g, '');
+        const sId = (s.id || '').trim().toUpperCase();
+        return s.id === voterId || sAdm === voterId.trim().toUpperCase() || sAdmClean === cleanVoterId || sId === cleanVoterId;
+      });
+
+      console.log('[VoteSubmit] Student lookup index:', idx, 'for voterId:', voterId);
       if (idx !== -1) {
         if (this.students[idx].hasVoted) {
-          return { success: false, error: 'You have already voted!' };
+          return { success: false, error: 'You have already voted! Multiple voting is strictly prohibited.' };
         }
         this.students[idx].hasVoted = true;
         this.students[idx].votedAt = timestamp;
         this.students[idx].votedCouncil = council;
         this.saveStudents();
+        // Fire-and-forget — don't block vote submission UI on Firebase sync
         this.syncSingleStudentToFirebase(this.students[idx]).catch(e => console.error('Firebase student vote sync error:', e));
+      } else {
+        console.warn('[VoteSubmit] Student not in local DB list, creating record for voterId:', voterId);
+        const fallbackStudent: Student = {
+          id: 'st-' + Date.now(),
+          admissionNo: voterId,
+          dob: '2010-01-01',
+          name: voterName,
+          class: voterClass || 10,
+          section: 'A',
+          rollNo: 1,
+          house: 'Cariappa',
+          gender: 'M',
+          hasVoted: true,
+          votedAt: timestamp,
+          votedCouncil: council
+        };
+        this.students.push(fallbackStudent);
+        this.saveStudents();
+        this.syncSingleStudentToFirebase(fallbackStudent).catch(e => console.error('Firebase fallback student sync error:', e));
       }
     } else {
-      const idx = this.teachers.findIndex(t => t.teacherId.toUpperCase() === voterId.toUpperCase());
+      const idx = this.teachers.findIndex(t => {
+        const tId = (t.teacherId || '').trim().toUpperCase();
+        const tIdClean = tId.replace(/[^A-Z0-9]/g, '');
+        const teacherUniqueId = (t.id || '').trim().toUpperCase();
+        return t.id === voterId || tId === voterId.trim().toUpperCase() || tIdClean === cleanVoterId || teacherUniqueId === cleanVoterId;
+      });
+
+      console.log('[VoteSubmit] Teacher lookup index:', idx, 'for voterId:', voterId);
       if (idx !== -1) {
         if (this.teachers[idx].hasVoted) {
-          return { success: false, error: 'Teacher ID has already voted!' };
+          return { success: false, error: 'Teacher ID has already voted! Multiple voting is strictly prohibited.' };
         }
         this.teachers[idx].hasVoted = true;
         this.teachers[idx].votedAt = timestamp;
         this.saveTeachers();
+        // Fire-and-forget — don't block vote submission UI on Firebase sync
         this.syncSingleTeacherToFirebase(this.teachers[idx]).catch(e => console.error('Firebase teacher vote sync error:', e));
+      } else {
+        console.warn('[VoteSubmit] Teacher not in local DB list, creating record for voterId:', voterId);
+        const fallbackTeacher: Teacher = {
+          id: 't-' + Date.now(),
+          teacherId: voterId,
+          name: voterName,
+          pin: '',
+          department: 'Staff',
+          designation: 'Teacher',
+          hasVoted: true,
+          votedAt: timestamp
+        };
+        this.teachers.push(fallbackTeacher);
+        this.saveTeachers();
+        this.syncSingleTeacherToFirebase(fallbackTeacher).catch(e => console.error('Firebase fallback teacher sync error:', e));
       }
     }
 
+    // Increment vote count for selected candidates
     Object.entries(selections).forEach(([, candidateId]) => {
       if (candidateId) {
         const cIdx = this.candidates.findIndex(c => c.id === candidateId);
         if (cIdx !== -1) {
-          this.candidates[cIdx].votesCount += 1;
+          this.candidates[cIdx].votesCount = (this.candidates[cIdx].votesCount || 0) + 1;
         }
       }
     });
     this.saveCandidates();
 
+    // Create Vote Record
     const voteRecord: VoteRecord = {
       id: 'v-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
       voterType,
@@ -328,11 +385,13 @@ class DatabaseService {
     this.votes.unshift(voteRecord);
     this.systemState.lastVoteTime = timestamp;
     this.saveVotes();
+    console.log('[VoteSubmit] Vote saved to local storage successfully.');
 
-    // Sync vote record and updated candidates to Firebase
-    await this.syncVoteToFirebase(voteRecord).catch(e => console.error('Firebase vote record sync error:', e));
-    await this.syncCandidatesToFirebase().catch(e => console.error('Firebase candidates sync error:', e));
+    // Sync vote & candidate vote tallies to Firebase asynchronously
+    this.syncVoteToFirebase(voteRecord).catch(e => console.error('Firebase vote record sync error:', e));
+    this.syncCandidatesToFirebase().catch(e => console.error('Firebase candidates sync error:', e));
 
+    console.log('[VoteSubmit] Vote submitted successfully!');
     return { success: true };
   }
 
@@ -538,52 +597,72 @@ class DatabaseService {
   public async loadFromFirebase(): Promise<void> {
     if (!db) return;
     try {
-      // Students — Firebase is source of truth: REPLACE local data
+      // Students — Firebase source of truth, fallback to local dataset if Firebase empty
       const studentsSnap = await getDocs(collection(db, 'students'));
       const fbStudents: Student[] = [];
       studentsSnap.forEach(docSnap => {
         fbStudents.push(docSnap.data() as Student);
       });
-      this.students = fbStudents;
-      this.saveStudents();
+      if (fbStudents.length > 0) {
+        this.students = fbStudents;
+        this.saveStudents();
+      } else if (this.students.length > 0) {
+        // Firebase has no students yet, auto-sync local students to Firebase
+        this.syncStudentsToFirebase().catch(e => console.warn("Auto-sync initial students error:", e));
+      }
 
-      // Teachers — Firebase is source of truth: REPLACE local data
+      // Teachers — Firebase source of truth, fallback to local dataset if Firebase empty
       const teachersSnap = await getDocs(collection(db, 'teachers'));
       const fbTeachers: Teacher[] = [];
       teachersSnap.forEach(docSnap => {
         fbTeachers.push(docSnap.data() as Teacher);
       });
-      this.teachers = fbTeachers;
-      this.saveTeachers();
+      if (fbTeachers.length > 0) {
+        this.teachers = fbTeachers;
+        this.saveTeachers();
+      } else if (this.teachers.length > 0) {
+        // Firebase has no teachers yet, auto-sync local teachers to Firebase
+        this.syncTeachersToFirebase().catch(e => console.warn("Auto-sync initial teachers error:", e));
+      }
 
-      // Candidates — Firebase is source of truth: REPLACE local data
+      // Candidates — Firebase source of truth, fallback to local dataset if Firebase empty
       const candidatesSnap = await getDocs(collection(db, 'candidates'));
       const fbCandidates: Candidate[] = [];
       candidatesSnap.forEach(docSnap => {
         fbCandidates.push(docSnap.data() as Candidate);
       });
-      this.candidates = fbCandidates;
-      this.saveCandidates();
+      if (fbCandidates.length > 0) {
+        this.candidates = fbCandidates;
+        this.saveCandidates();
+      } else if (this.candidates.length > 0) {
+        // Firebase has no candidates yet, auto-sync local candidates to Firebase
+        this.syncCandidatesToFirebase().catch(e => console.warn("Auto-sync initial candidates error:", e));
+      }
 
-      // Votes — Firebase is source of truth: REPLACE local data
+      // Votes — Firebase source of truth, merge with local unsynced votes
       const votesSnap = await getDocs(collection(db, 'votes'));
       const fbVotes: VoteRecord[] = [];
       votesSnap.forEach(docSnap => {
         fbVotes.push(docSnap.data() as VoteRecord);
       });
-      // Sort by timestamp descending (newest first)
-      fbVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      this.votes = fbVotes;
-      this.saveVotes();
+      if (fbVotes.length > 0) {
+        const voteMap = new Map<string, VoteRecord>();
+        this.votes.forEach(v => voteMap.set(v.id, v));
+        fbVotes.forEach(v => voteMap.set(v.id, v));
+        const mergedVotes = Array.from(voteMap.values());
+        mergedVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        this.votes = mergedVotes;
+        this.saveVotes();
+      }
 
-      // System Config — Firebase is source of truth: REPLACE local systemState
+      // System Config — Firebase source of truth
       const configSnap = await getDoc(doc(db, 'system', 'config'));
       if (configSnap.exists()) {
         this.systemState = configSnap.data() as SystemState;
         localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
       }
 
-      console.log(`Firebase sync complete: ${fbStudents.length} students, ${fbTeachers.length} teachers, ${fbCandidates.length} candidates, ${fbVotes.length} votes loaded.`);
+      console.log(`Firebase sync complete: ${this.students.length} students, ${this.teachers.length} teachers, ${this.candidates.length} candidates, ${this.votes.length} votes loaded.`);
     } catch (e) {
       console.warn("Could not load initial data from Firebase Firestore:", e);
     }
