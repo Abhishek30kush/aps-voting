@@ -639,21 +639,15 @@ class DatabaseService {
         this.syncCandidatesToFirebase().catch(e => console.warn("Auto-sync initial candidates error:", e));
       }
 
-      // Votes — Firebase source of truth, merge with local unsynced votes
+      // Votes — Firebase source of truth
       const votesSnap = await getDocs(collection(db, 'votes'));
       const fbVotes: VoteRecord[] = [];
       votesSnap.forEach(docSnap => {
         fbVotes.push(docSnap.data() as VoteRecord);
       });
-      if (fbVotes.length > 0) {
-        const voteMap = new Map<string, VoteRecord>();
-        this.votes.forEach(v => voteMap.set(v.id, v));
-        fbVotes.forEach(v => voteMap.set(v.id, v));
-        const mergedVotes = Array.from(voteMap.values());
-        mergedVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        this.votes = mergedVotes;
-        this.saveVotes();
-      }
+      fbVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      this.votes = fbVotes;
+      this.saveVotes();
 
       // System Config — Firebase source of truth
       const configSnap = await getDoc(doc(db, 'system', 'config'));
@@ -937,55 +931,96 @@ class DatabaseService {
     }
   }
 
-  public resetAllVotes() {
+  public async resetAllVotes(): Promise<{ success: boolean; error?: string }> {
+    console.log('[ResetAllVotes] Resetting all votes locally and on Firebase...');
     this.votes = [];
     this.students = this.students.map(s => ({ ...s, hasVoted: false, votedAt: undefined, votedCouncil: undefined }));
     this.teachers = this.teachers.map(t => ({ ...t, hasVoted: false, votedAt: undefined }));
     this.candidates = this.candidates.map(c => ({ ...c, votesCount: 0 }));
-    this.systemState.lastVoteTime = undefined;
     
+    this.systemState.totalVotesCast = 0;
+    this.systemState.lastVoteTime = undefined;
+
     this.saveStudents();
     this.saveTeachers();
     this.saveCandidates();
     this.saveVotes();
 
-    this.syncStudentsToFirebase().catch(e => console.error("Sync students reset error:", e));
-    this.syncTeachersToFirebase().catch(e => console.error("Sync teachers reset error:", e));
-    this.syncCandidatesToFirebase().catch(e => console.error("Sync candidates reset error:", e));
-
     if (db) {
-      getDocs(collection(db, 'votes')).then(snap => {
-        const batch = writeBatch(db!);
-        snap.forEach(docSnap => batch.delete(docSnap.ref));
-        return batch.commit();
-      }).catch(e => console.error("Firebase clear votes error:", e));
+      try {
+        // 1. Delete all docs in Firestore 'votes' collection synchronously
+        const votesSnap = await getDocs(collection(db, 'votes'));
+        if (!votesSnap.empty) {
+          const docsArr = votesSnap.docs;
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < docsArr.length; i += BATCH_SIZE) {
+            const batch = writeBatch(db);
+            const chunk = docsArr.slice(i, i + BATCH_SIZE);
+            chunk.forEach(docSnap => batch.delete(docSnap.ref));
+            await batch.commit();
+          }
+        }
+
+        // 2. Sync reset students, teachers, candidates, and system config to Firestore
+        await this.syncStudentsToFirebase();
+        await this.syncTeachersToFirebase();
+        await this.syncCandidatesToFirebase();
+        await setDoc(doc(db, 'system', 'config'), JSON.parse(JSON.stringify(this.systemState)), { merge: true });
+
+        console.log('[ResetAllVotes] Firebase full reset completed successfully.');
+      } catch (e: any) {
+        console.error('[ResetAllVotes] Firebase reset error:', e);
+      }
     }
+    return { success: true };
   }
 
-  public restartFreshElection() {
-    this.resetAllVotes();
+  public async restartFreshElection(): Promise<{ success: boolean; error?: string }> {
+    await this.resetAllVotes();
     this.systemState.isVotingOpen = true;
+    this.systemState.totalVotesCast = 0;
+    this.systemState.lastVoteTime = undefined;
     localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
     if (db) {
-      setDoc(doc(db, 'system', 'config'), JSON.parse(JSON.stringify(this.systemState)), { merge: true })
+      await setDoc(doc(db, 'system', 'config'), JSON.parse(JSON.stringify(this.systemState)), { merge: true })
         .catch(e => console.error("Firebase restart config error:", e));
     }
+    return { success: true };
   }
 
-  public restoreDefaultDataset() {
+  public async restoreDefaultDataset(): Promise<{ success: boolean }> {
     this.students = INITIAL_STUDENTS;
     this.teachers = INITIAL_TEACHERS;
     this.candidates = INITIAL_CANDIDATES;
     this.votes = INITIAL_VOTE_RECORDS;
-    this.systemState = { isVotingOpen: true, totalVotesCast: 0 };
+    this.systemState = { isVotingOpen: true, totalVotesCast: INITIAL_VOTE_RECORDS.length };
     
     this.saveStudents();
     this.saveTeachers();
     this.saveCandidates();
     this.saveVotes();
 
-    this.syncStudentsToFirebase().catch(e => console.error("Sync students default error:", e));
-    this.syncTeachersToFirebase().catch(e => console.error("Sync teachers default error:", e));
+    if (db) {
+      try {
+        const votesSnap = await getDocs(collection(db, 'votes'));
+        if (!votesSnap.empty) {
+          const batch = writeBatch(db);
+          votesSnap.docs.forEach(docSnap => batch.delete(docSnap.ref));
+          await batch.commit();
+        }
+      } catch (e) {
+        console.error("Firebase clear votes error in restore default:", e);
+      }
+
+      await this.syncStudentsToFirebase().catch(e => console.error("Sync students default error:", e));
+      await this.syncTeachersToFirebase().catch(e => console.error("Sync teachers default error:", e));
+      await this.syncCandidatesToFirebase().catch(e => console.error("Sync candidates default error:", e));
+      
+      for (const vote of INITIAL_VOTE_RECORDS) {
+        await this.syncVoteToFirebase(vote);
+      }
+    }
+    return { success: true };
   }
 }
 

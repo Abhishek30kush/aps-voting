@@ -87,28 +87,37 @@ export const AdminDashboard: React.FC = () => {
     refreshData();
   };
 
-  const handleRestartFreshElection = () => {
+  const handleRestartFreshElection = async () => {
     if (window.confirm('⚠️ CONFIRM ELECTION RESTART:\n\nAre you sure you want to RESTART THE ELECTION FROM SCRATCH?\n\nThis will:\n1. Open voting polls for all students and teachers.\n2. Clear all submitted vote records and audit logs.\n3. Reset all student & teacher voting statuses back to PENDING.\n4. Reset all candidate vote counts to 0.\n\nClick OK to confirm and start a fresh voting session.')) {
-      dbService.restartFreshElection();
+      setIsSyncingFirebase(true);
+      setImportStatus({ message: '🔄 Resetting all votes and clearing Firestore database...', type: 'success' });
+      await dbService.restartFreshElection();
       refreshData();
+      setIsSyncingFirebase(false);
       setImportStatus({
-        message: '🔄 Election restarted from scratch! Voting polls are now OPEN and all vote counts have been reset to zero.',
+        message: '🎉 Election restarted from scratch! Voting polls are OPEN, all candidate tallies & audit logs reset to ZERO.',
         type: 'success'
       });
     }
   };
 
-  const handleResetVotes = () => {
+  const handleResetVotes = async () => {
     if (window.confirm('Are you sure you want to RESET ALL VOTES? This will clear all cast ballots and reset student voted statuses.')) {
-      dbService.resetAllVotes();
+      setIsSyncingFirebase(true);
+      await dbService.resetAllVotes();
       refreshData();
+      setIsSyncingFirebase(false);
+      setImportStatus({ message: '✅ All poll votes cleared! Student & teacher voting statuses set to PENDING.', type: 'success' });
     }
   };
 
-  const handleRestoreDefaults = () => {
+  const handleRestoreDefaults = async () => {
     if (window.confirm('Restore initial default sample dataset for Army Public School?')) {
-      dbService.restoreDefaultDataset();
+      setIsSyncingFirebase(true);
+      await dbService.restoreDefaultDataset();
       refreshData();
+      setIsSyncingFirebase(false);
+      setImportStatus({ message: '✅ Demo sample dataset restored successfully.', type: 'success' });
     }
   };
 
