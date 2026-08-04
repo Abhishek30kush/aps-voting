@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, Vote, Clock, Percent, Award, Shield, BarChart3, Plus, 
-  Trash2, RefreshCcw, Download, ToggleLeft, ToggleRight, Search, 
+  Trash2, RefreshCcw, RotateCcw, Download, ToggleLeft, ToggleRight, Search, 
   UserPlus, TrendingUp, Upload, FileText, CheckCircle2, AlertCircle, Eye, UserCheck
 } from 'lucide-react';
 import { dbService } from '../../services/databaseService';
@@ -85,6 +85,17 @@ export const AdminDashboard: React.FC = () => {
   const handleToggleVoting = () => {
     dbService.toggleVotingStatus();
     refreshData();
+  };
+
+  const handleRestartFreshElection = () => {
+    if (window.confirm('⚠️ CONFIRM ELECTION RESTART:\n\nAre you sure you want to RESTART THE ELECTION FROM SCRATCH?\n\nThis will:\n1. Open voting polls for all students and teachers.\n2. Clear all submitted vote records and audit logs.\n3. Reset all student & teacher voting statuses back to PENDING.\n4. Reset all candidate vote counts to 0.\n\nClick OK to confirm and start a fresh voting session.')) {
+      dbService.restartFreshElection();
+      refreshData();
+      setImportStatus({
+        message: '🔄 Election restarted from scratch! Voting polls are now OPEN and all vote counts have been reset to zero.',
+        type: 'success'
+      });
+    }
   };
 
   const handleResetVotes = () => {
@@ -1442,50 +1453,81 @@ export const AdminDashboard: React.FC = () => {
               <span>Election System Maintenance Controls</span>
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-slate-950 border border-red-500/30 p-5 rounded-2xl space-y-3">
-                <h4 className="text-base font-bold text-red-400 flex items-center gap-2">
-                  <Trash2 className="w-5 h-5" />
-                  <span>Reset All Poll Votes</span>
-                </h4>
-                <p className="text-xs text-slate-400">
-                  Clears all submitted vote records and sets all student & teacher voting statuses back to PENDING.
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Fresh Election Restart Card */}
+              <div className="bg-gradient-to-br from-red-950/90 via-slate-900 to-slate-950 border-2 border-red-500/60 p-5 rounded-2xl space-y-3 shadow-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-extrabold text-red-400 flex items-center gap-2">
+                      <RotateCcw className="w-5 h-5 text-red-400" />
+                      <span>Restart Fresh Election</span>
+                    </h4>
+                    <span className="px-2 py-0.5 bg-red-500/20 text-red-300 text-[10px] font-bold rounded-full border border-red-500/40 uppercase">
+                      Start Over
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Start election from scratch. Clears all cast ballots, resets student & teacher statuses to PENDING, resets candidate votes to 0, and OPENS voting.
+                  </p>
+                </div>
+                <button
+                  onClick={handleRestartFreshElection}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold rounded-xl text-xs shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 transition hover:scale-[1.02]"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restart Election From Scratch</span>
+                </button>
+              </div>
+
+              <div className="bg-slate-950 border border-red-500/30 p-5 rounded-2xl space-y-3 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-base font-bold text-red-400 flex items-center gap-2 mb-2">
+                    <Trash2 className="w-5 h-5" />
+                    <span>Reset All Poll Votes</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Clears all submitted vote records and sets all student & teacher voting statuses back to PENDING.
+                  </p>
+                </div>
                 <button
                   onClick={handleResetVotes}
-                  className="py-2.5 px-4 bg-red-950 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-xs transition"
+                  className="w-full py-2.5 px-4 bg-red-950 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-xs transition"
                 >
                   Execute Poll Reset
                 </button>
               </div>
 
-              <div className="bg-slate-950 border border-amber-500/30 p-5 rounded-2xl space-y-3">
-                <h4 className="text-base font-bold text-amber-400 flex items-center gap-2">
-                  <Award className="w-5 h-5" />
-                  <span>Clear All Nominated Candidates</span>
-                </h4>
-                <p className="text-xs text-slate-400">
-                  Removes all candidates from the candidate roster for a fresh election nomination.
-                </p>
+              <div className="bg-slate-950 border border-amber-500/30 p-5 rounded-2xl space-y-3 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-base font-bold text-amber-400 flex items-center gap-2 mb-2">
+                    <Award className="w-5 h-5" />
+                    <span>Clear Nominated Candidates</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Removes all candidates from the candidate roster for a fresh election nomination.
+                  </p>
+                </div>
                 <button
                   onClick={handleClearAllCandidates}
-                  className="py-2.5 px-4 bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-500/40 font-bold rounded-xl text-xs transition"
+                  className="w-full py-2.5 px-4 bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-500/40 font-bold rounded-xl text-xs transition"
                 >
                   Clear All Candidates
                 </button>
               </div>
 
-              <div className="bg-slate-950 border border-slate-800 p-5 rounded-2xl space-y-3">
-                <h4 className="text-base font-bold text-slate-300 flex items-center gap-2">
-                  <RefreshCcw className="w-5 h-5" />
-                  <span>Restore Sample Dataset</span>
-                </h4>
-                <p className="text-xs text-slate-400">
-                  Resets database to Army Public School standard sample candidates, students, and teachers.
-                </p>
+              <div className="bg-slate-950 border border-slate-800 p-5 rounded-2xl space-y-3 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-base font-bold text-slate-300 flex items-center gap-2 mb-2">
+                    <RefreshCcw className="w-5 h-5" />
+                    <span>Restore Sample Dataset</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Resets database to Army Public School standard sample candidates, students, and teachers.
+                  </p>
+                </div>
                 <button
                   onClick={handleRestoreDefaults}
-                  className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
+                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
                 >
                   Restore Demo Data
                 </button>

@@ -951,6 +951,25 @@ class DatabaseService {
 
     this.syncStudentsToFirebase().catch(e => console.error("Sync students reset error:", e));
     this.syncTeachersToFirebase().catch(e => console.error("Sync teachers reset error:", e));
+    this.syncCandidatesToFirebase().catch(e => console.error("Sync candidates reset error:", e));
+
+    if (db) {
+      getDocs(collection(db, 'votes')).then(snap => {
+        const batch = writeBatch(db!);
+        snap.forEach(docSnap => batch.delete(docSnap.ref));
+        return batch.commit();
+      }).catch(e => console.error("Firebase clear votes error:", e));
+    }
+  }
+
+  public restartFreshElection() {
+    this.resetAllVotes();
+    this.systemState.isVotingOpen = true;
+    localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
+    if (db) {
+      setDoc(doc(db, 'system', 'config'), JSON.parse(JSON.stringify(this.systemState)), { merge: true })
+        .catch(e => console.error("Firebase restart config error:", e));
+    }
   }
 
   public restoreDefaultDataset() {
