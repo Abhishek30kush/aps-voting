@@ -23,11 +23,9 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Votes collection — create & read only (immutable vote log, cannot be edited or deleted by clients)
+    // Votes collection — read, write & delete allowed for ballot logging & election reset
     match /votes/{voteId} {
-      allow create: if true;
-      allow read: if true;
-      allow update, delete: if false;
+      allow read, write: if true;
     }
 
     // Deny all other unhandled collections by default

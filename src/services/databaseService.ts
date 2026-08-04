@@ -956,9 +956,18 @@ class DatabaseService {
   public async resetAllVotes(): Promise<{ success: boolean; error?: string }> {
     console.log('[ResetAllVotes] Resetting all votes locally and on Firebase...');
     this.votes = [];
-    this.students = this.students.map(s => ({ ...s, hasVoted: false, votedAt: undefined, votedCouncil: undefined }));
-    this.teachers = this.teachers.map(t => ({ ...t, hasVoted: false, votedAt: undefined }));
-    this.candidates = this.candidates.map(c => ({ ...c, votesCount: 0 }));
+    this.students = this.students.map(s => ({
+      ...s,
+      hasVoted: false,
+      votedAt: '',
+      votedCouncil: undefined
+    }));
+    this.teachers = this.teachers.map(t => ({
+      ...t,
+      hasVoted: false,
+      votedAt: ''
+    }));
+    this.recalculateCandidateVoteCounts();
     
     this.systemState.totalVotesCast = 0;
     this.systemState.lastVoteTime = undefined;
@@ -972,9 +981,10 @@ class DatabaseService {
       try {
         // 1. Delete all docs in Firestore 'votes' collection synchronously
         const votesSnap = await getDocs(collection(db, 'votes'));
+        console.log(`[ResetAllVotes] Deleting ${votesSnap.size} vote documents from Firestore...`);
         if (!votesSnap.empty) {
           const docsArr = votesSnap.docs;
-          const BATCH_SIZE = 500;
+          const BATCH_SIZE = 450;
           for (let i = 0; i < docsArr.length; i += BATCH_SIZE) {
             const batch = writeBatch(db);
             const chunk = docsArr.slice(i, i + BATCH_SIZE);
@@ -982,6 +992,7 @@ class DatabaseService {
             await batch.commit();
           }
         }
+        console.log('[ResetAllVotes] Firestore vote documents deleted successfully.');
 
         // 2. Sync reset students, teachers, candidates, and system config to Firestore
         await this.syncStudentsToFirebase();
