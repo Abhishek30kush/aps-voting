@@ -165,6 +165,26 @@ class DatabaseService {
     localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(this.votes));
     this.systemState.totalVotesCast = this.votes.length;
     localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
+    this.recalculateCandidateVoteCounts();
+    localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(this.candidates));
+  }
+
+  /** Dynamically recalculates candidate vote tallies from the current votes log array */
+  public recalculateCandidateVoteCounts(): void {
+    const countsMap = new Map<string, number>();
+    (this.votes || []).forEach(v => {
+      if (v.selections) {
+        Object.values(v.selections).forEach(candId => {
+          if (candId) {
+            countsMap.set(candId, (countsMap.get(candId) || 0) + 1);
+          }
+        });
+      }
+    });
+
+    this.candidates.forEach(c => {
+      c.votesCount = countsMap.get(c.id) || 0;
+    });
   }
 
   // --- STUDENT AUTHENTICATION & LOOKUP ---
@@ -257,10 +277,12 @@ class DatabaseService {
 
   // --- GET CANDIDATES BY COUNCIL ---
   public getCandidatesByCouncil(council: CouncilType): Candidate[] {
+    this.recalculateCandidateVoteCounts();
     return this.candidates.filter(c => c.council === council);
   }
 
   public getAllCandidates(): Candidate[] {
+    this.recalculateCandidateVoteCounts();
     return this.candidates;
   }
 
