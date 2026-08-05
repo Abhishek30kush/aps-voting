@@ -85,11 +85,11 @@ export const AdminDashboard: React.FC = () => {
       refreshData();
     });
 
-    const interval = setInterval(() => {
+    const unsubscribe = dbService.subscribe(() => {
       refreshData();
-    }, 3000);
+    });
 
-    return () => clearInterval(interval);
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {

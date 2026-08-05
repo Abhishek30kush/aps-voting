@@ -39,22 +39,18 @@ export const App: React.FC = () => {
   const [, setDbDataReady] = useState(false);
 
   useEffect(() => {
-    dbService.ready.then(() => {
+    const updateRealtimeState = () => {
       setDbDataReady(true);
       const metrics = dbService.getAdminMetrics();
       setIsVotingOpen(metrics.isVotingOpen);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (currentView === 'ballot') {
-      const syncBallot = () => {
+      if (currentView === 'ballot') {
         setBallotCandidates(dbService.getCandidatesByCouncil(assignedCouncil));
-      };
-      syncBallot();
-      const interval = setInterval(syncBallot, 1500);
-      return () => clearInterval(interval);
-    }
+      }
+    };
+
+    dbService.ready.then(updateRealtimeState);
+    const unsubscribe = dbService.subscribe(updateRealtimeState);
+    return () => unsubscribe();
   }, [currentView, assignedCouncil]);
 
   useEffect(() => {

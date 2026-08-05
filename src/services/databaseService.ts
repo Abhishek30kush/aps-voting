@@ -110,12 +110,32 @@ const STORAGE_KEYS = {
   SYSTEM: 'aps_voting_system_v1'
 };
 
+type DBListener = () => void;
+
 class DatabaseService {
   private students: Student[] = [];
   private teachers: Teacher[] = [];
   private candidates: Candidate[] = [];
   private votes: VoteRecord[] = [];
   private systemState: SystemState = { isVotingOpen: true, totalVotesCast: 0 };
+  private listeners: Set<DBListener> = new Set();
+
+  public subscribe(listener: DBListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners() {
+    this.listeners.forEach(fn => {
+      try {
+        fn();
+      } catch (e) {
+        console.error("DatabaseService listener error:", e);
+      }
+    });
+  }
 
   /** Resolves when initial Firebase data load is complete */
   public ready: Promise<void>;
@@ -706,6 +726,7 @@ class DatabaseService {
         this.candidates = fbCandidates;
         this.recalculateCandidateVoteCounts();
         this.saveCandidates();
+        this.notifyListeners();
       }, err => console.warn("Firestore candidates snapshot error:", err));
 
       // 2. Real-time Votes listener
@@ -718,30 +739,29 @@ class DatabaseService {
         this.votes = fbVotes;
         this.recalculateCandidateVoteCounts();
         this.saveVotes();
+        this.notifyListeners();
       }, err => console.warn("Firestore votes snapshot error:", err));
 
       // 3. Real-time Students listener
       onSnapshot(collection(db, 'students'), (snapshot) => {
-        if (!snapshot.empty) {
-          const fbStudents: Student[] = [];
-          snapshot.forEach(docSnap => {
-            fbStudents.push(docSnap.data() as Student);
-          });
-          this.students = fbStudents;
-          this.saveStudents();
-        }
+        const fbStudents: Student[] = [];
+        snapshot.forEach(docSnap => {
+          fbStudents.push(docSnap.data() as Student);
+        });
+        this.students = fbStudents;
+        this.saveStudents();
+        this.notifyListeners();
       }, err => console.warn("Firestore students snapshot error:", err));
 
       // 4. Real-time Teachers listener
       onSnapshot(collection(db, 'teachers'), (snapshot) => {
-        if (!snapshot.empty) {
-          const fbTeachers: Teacher[] = [];
-          snapshot.forEach(docSnap => {
-            fbTeachers.push(docSnap.data() as Teacher);
-          });
-          this.teachers = fbTeachers;
-          this.saveTeachers();
-        }
+        const fbTeachers: Teacher[] = [];
+        snapshot.forEach(docSnap => {
+          fbTeachers.push(docSnap.data() as Teacher);
+        });
+        this.teachers = fbTeachers;
+        this.saveTeachers();
+        this.notifyListeners();
       }, err => console.warn("Firestore teachers snapshot error:", err));
 
       // 5. Real-time System Config listener
@@ -749,6 +769,7 @@ class DatabaseService {
         if (docSnap.exists()) {
           this.systemState = docSnap.data() as SystemState;
           localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
+          this.notifyListeners();
         }
       }, err => console.warn("Firestore system config snapshot error:", err));
     } catch (e) {
@@ -800,11 +821,41 @@ class DatabaseService {
   public clearAllStudents() {
     this.students = [];
     this.saveStudents();
+    this.notifyListeners();
+    if (db) {
+      getDocs(collection(db, 'students')).then(snap => {
+        if (!snap.empty) {
+          const docsArr = snap.docs;
+          const BATCH_SIZE = 450;
+          for (let i = 0; i < docsArr.length; i += BATCH_SIZE) {
+            const batch = writeBatch(db!);
+            const chunk = docsArr.slice(i, i + BATCH_SIZE);
+            chunk.forEach(docSnap => batch.delete(docSnap.ref));
+            batch.commit().catch(e => console.error("Firebase clear students batch error:", e));
+          }
+        }
+      }).catch(e => console.error("Firebase clear students error:", e));
+    }
   }
 
   public clearAllTeachers() {
     this.teachers = [];
     this.saveTeachers();
+    this.notifyListeners();
+    if (db) {
+      getDocs(collection(db, 'teachers')).then(snap => {
+        if (!snap.empty) {
+          const docsArr = snap.docs;
+          const BATCH_SIZE = 450;
+          for (let i = 0; i < docsArr.length; i += BATCH_SIZE) {
+            const batch = writeBatch(db!);
+            const chunk = docsArr.slice(i, i + BATCH_SIZE);
+            chunk.forEach(docSnap => batch.delete(docSnap.ref));
+            batch.commit().catch(e => console.error("Firebase clear teachers batch error:", e));
+          }
+        }
+      }).catch(e => console.error("Firebase clear teachers error:", e));
+    }
   }
 
   // --- BULK IMPORT STUDENTS ---
