@@ -47,6 +47,17 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (currentView === 'ballot') {
+      const syncBallot = () => {
+        setBallotCandidates(dbService.getCandidatesByCouncil(assignedCouncil));
+      };
+      syncBallot();
+      const interval = setInterval(syncBallot, 1500);
+      return () => clearInterval(interval);
+    }
+  }, [currentView, assignedCouncil]);
+
+  useEffect(() => {
     const checkHashRoute = () => {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();

@@ -1,6 +1,6 @@
 import type { Student, Teacher, Candidate, VoteRecord, CouncilType, SystemState, PositionType, HouseType } from '../types';
 import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CANDIDATES, INITIAL_VOTE_RECORDS } from './mockData';
-import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 
 const MONTH_MAP: Record<string, string> = {
@@ -122,7 +122,11 @@ class DatabaseService {
 
   constructor() {
     this.initLocalData();
-    this.ready = this.loadFromFirebase().catch(err => console.warn("Initial Firebase load background notice:", err));
+    this.ready = this.loadFromFirebase()
+      .then(() => {
+        this.setupRealtimeListeners();
+      })
+      .catch(err => console.warn("Initial Firebase load background notice:", err));
   }
 
   private initLocalData() {
@@ -657,19 +661,14 @@ class DatabaseService {
         this.syncTeachersToFirebase().catch(e => console.warn("Auto-sync initial teachers error:", e));
       }
 
-      // Candidates — Firebase source of truth, fallback to local dataset if Firebase empty
+      // Candidates — Firebase source of truth
       const candidatesSnap = await getDocs(collection(db, 'candidates'));
       const fbCandidates: Candidate[] = [];
       candidatesSnap.forEach(docSnap => {
         fbCandidates.push(docSnap.data() as Candidate);
       });
-      if (fbCandidates.length > 0) {
-        this.candidates = fbCandidates;
-        this.saveCandidates();
-      } else if (this.candidates.length > 0) {
-        // Firebase has no candidates yet, auto-sync local candidates to Firebase
-        this.syncCandidatesToFirebase().catch(e => console.warn("Auto-sync initial candidates error:", e));
-      }
+      this.candidates = fbCandidates;
+      this.saveCandidates();
 
       // Votes — Firebase source of truth
       const votesSnap = await getDocs(collection(db, 'votes'));
@@ -691,6 +690,69 @@ class DatabaseService {
       console.log(`Firebase sync complete: ${this.students.length} students, ${this.teachers.length} teachers, ${this.candidates.length} candidates, ${this.votes.length} votes loaded.`);
     } catch (e) {
       console.warn("Could not load initial data from Firebase Firestore:", e);
+    }
+  }
+
+  private setupRealtimeListeners() {
+    if (!db) return;
+
+    try {
+      // 1. Real-time Candidates listener
+      onSnapshot(collection(db, 'candidates'), (snapshot) => {
+        const fbCandidates: Candidate[] = [];
+        snapshot.forEach(docSnap => {
+          fbCandidates.push(docSnap.data() as Candidate);
+        });
+        this.candidates = fbCandidates;
+        this.recalculateCandidateVoteCounts();
+        this.saveCandidates();
+      }, err => console.warn("Firestore candidates snapshot error:", err));
+
+      // 2. Real-time Votes listener
+      onSnapshot(collection(db, 'votes'), (snapshot) => {
+        const fbVotes: VoteRecord[] = [];
+        snapshot.forEach(docSnap => {
+          fbVotes.push(docSnap.data() as VoteRecord);
+        });
+        fbVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        this.votes = fbVotes;
+        this.recalculateCandidateVoteCounts();
+        this.saveVotes();
+      }, err => console.warn("Firestore votes snapshot error:", err));
+
+      // 3. Real-time Students listener
+      onSnapshot(collection(db, 'students'), (snapshot) => {
+        if (!snapshot.empty) {
+          const fbStudents: Student[] = [];
+          snapshot.forEach(docSnap => {
+            fbStudents.push(docSnap.data() as Student);
+          });
+          this.students = fbStudents;
+          this.saveStudents();
+        }
+      }, err => console.warn("Firestore students snapshot error:", err));
+
+      // 4. Real-time Teachers listener
+      onSnapshot(collection(db, 'teachers'), (snapshot) => {
+        if (!snapshot.empty) {
+          const fbTeachers: Teacher[] = [];
+          snapshot.forEach(docSnap => {
+            fbTeachers.push(docSnap.data() as Teacher);
+          });
+          this.teachers = fbTeachers;
+          this.saveTeachers();
+        }
+      }, err => console.warn("Firestore teachers snapshot error:", err));
+
+      // 5. Real-time System Config listener
+      onSnapshot(doc(db, 'system', 'config'), (docSnap) => {
+        if (docSnap.exists()) {
+          this.systemState = docSnap.data() as SystemState;
+          localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
+        }
+      }, err => console.warn("Firestore system config snapshot error:", err));
+    } catch (e) {
+      console.warn("Firestore realtime listeners setup error:", e);
     }
   }
 
