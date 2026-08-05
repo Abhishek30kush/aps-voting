@@ -59,15 +59,15 @@ function normalizeDateVariants(str: string): string[] {
         yearNum = p3.length === 2 ? '20' + p3 : p3;
         const v1 = pad(p1, 2);
         const v2 = pad(p2, 2);
-        
-        [ [v1, v2], [v2, v1] ].forEach(([d, m]) => {
+
+        [[v1, v2], [v2, v1]].forEach(([d, m]) => {
           variants.push(`${yearNum}-${m}-${d}`);
           variants.push(`${d}-${m}-${yearNum}`);
           variants.push(`${d}/${m}/${yearNum}`);
           variants.push(`${m}/${d}/${yearNum}`);
           variants.push(`${d}${m}${yearNum}`);
           variants.push(`${yearNum}${m}${d}`);
-          
+
           const monthShort = NUM_TO_MONTH_SHORT[m];
           if (monthShort) {
             variants.push(`${d}-${monthShort}-${yearNum}`);
@@ -199,7 +199,7 @@ class DatabaseService {
     }
 
     const cleanInput = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    
+
     // Match exact string OR normalized alphanumeric string
     const student = this.students.find(s => {
       const sAdm = (s.admissionNo || '').trim().toUpperCase();
@@ -222,9 +222,9 @@ class DatabaseService {
     }
 
     if (student.hasVoted) {
-      return { 
-        student, 
-        error: `Voting already completed! Student ${student.name} (${student.admissionNo}) has already cast their ballot.` 
+      return {
+        student,
+        error: `Voting already completed! Student ${student.name} (${student.admissionNo}) has already cast their ballot.`
       };
     }
 
@@ -266,9 +266,9 @@ class DatabaseService {
     }
 
     if (teacher.hasVoted) {
-      return { 
-        teacher, 
-        error: `Voting already completed! Teacher ${teacher.name} (${teacher.teacherId}) has already cast their ballot.` 
+      return {
+        teacher,
+        error: `Voting already completed! Teacher ${teacher.name} (${teacher.teacherId}) has already cast their ballot.`
       };
     }
 
@@ -332,7 +332,7 @@ class DatabaseService {
           admissionNo: voterId,
           dob: '2010-01-01',
           name: voterName,
-          class: voterClass || 10,
+          class: voterClass || (council === 'junior' ? 5 : 10),
           section: 'A',
           rollNo: 1,
           house: 'Cariappa',
@@ -419,6 +419,8 @@ class DatabaseService {
 
   // --- ADMIN ANALYTICS & DASHBOARD METRICS ---
   public getAdminMetrics() {
+    this.recalculateCandidateVoteCounts();
+
     const totalStudents = this.students.length;
     const totalTeachers = this.teachers.length;
     const totalEligibleVoters = totalStudents + totalTeachers;
@@ -426,23 +428,29 @@ class DatabaseService {
     const studentVotes = this.students.filter(s => s.hasVoted).length;
     const teacherVotes = this.teachers.filter(t => t.hasVoted).length;
     const totalVotes = this.votes.length;
-    const pendingVotes = totalEligibleVoters - (studentVotes + teacherVotes);
+    const pendingVotes = Math.max(0, totalEligibleVoters - (studentVotes + teacherVotes));
 
-    const votingPercentage = totalEligibleVoters > 0 
-      ? Math.round(((studentVotes + teacherVotes) / totalEligibleVoters) * 100) 
+    const votingPercentage = totalEligibleVoters > 0
+      ? Math.round(((studentVotes + teacherVotes) / totalEligibleVoters) * 100)
       : 0;
 
-    const juniorStudents = this.students.filter(s => s.class <= 5);
-    const juniorVoted = juniorStudents.filter(s => s.hasVoted).length;
-    const juniorPercentage = juniorStudents.length > 0 
-      ? Math.round((juniorVoted / juniorStudents.length) * 100) 
-      : 0;
+    const juniorStudents = this.students.filter(s => s.class && Number(s.class) <= 5);
+    const juniorVotesFromRecords = this.votes.filter(v => v.council === 'junior').length;
+    const juniorStudentVotedCount = juniorStudents.filter(s => s.hasVoted).length;
+    const juniorVoted = Math.max(juniorStudentVotedCount, juniorVotesFromRecords);
 
-    const seniorStudents = this.students.filter(s => s.class >= 6);
-    const seniorVoted = seniorStudents.filter(s => s.hasVoted).length;
-    const seniorPercentage = seniorStudents.length > 0 
-      ? Math.round((seniorVoted / seniorStudents.length) * 100) 
-      : 0;
+    const juniorPercentage = juniorStudents.length > 0
+      ? Math.round((juniorStudentVotedCount / juniorStudents.length) * 100)
+      : (juniorVotesFromRecords > 0 ? 100 : 0);
+
+    const seniorStudents = this.students.filter(s => !s.class || Number(s.class) >= 6);
+    const seniorVotesFromRecords = this.votes.filter(v => v.council === 'senior').length;
+    const seniorStudentVotedCount = seniorStudents.filter(s => s.hasVoted).length;
+    const seniorVoted = Math.max(seniorStudentVotedCount, seniorVotesFromRecords);
+
+    const seniorPercentage = seniorStudents.length > 0
+      ? Math.round((seniorStudentVotedCount / seniorStudents.length) * 100)
+      : (seniorVotesFromRecords > 0 ? 100 : 0);
 
     const lastVote = this.votes.length > 0 ? this.votes[0] : null;
 
@@ -457,8 +465,10 @@ class DatabaseService {
       seniorPercentage,
       juniorVoted,
       juniorTotal: juniorStudents.length,
+      juniorVotesFromRecords,
       seniorVoted,
       seniorTotal: seniorStudents.length,
+      seniorVotesFromRecords,
       lastVoteTime: lastVote ? lastVote.timestamp : undefined,
       recentVotes: this.votes.slice(0, 10),
       isVotingOpen: this.systemState.isVotingOpen
@@ -743,6 +753,33 @@ class DatabaseService {
 
     const validHouses: HouseType[] = ['Cariappa', 'Manekshaw', 'Thimayya', 'Vaidya'];
 
+    const parseClassNumber = (rawClass: any): number => {
+      if (rawClass === undefined || rawClass === null || rawClass === '') return 10;
+      const str = String(rawClass).trim().toUpperCase();
+      const romanMap: Record<string, number> = {
+        'I': 1, '1ST': 1, '1': 1, 'CLASS 1': 1, 'CLASS-1': 1, 'CLASS I': 1,
+        'II': 2, '2ND': 2, '2': 2, 'CLASS 2': 2, 'CLASS-2': 2, 'CLASS II': 2,
+        'III': 3, '3RD': 3, '3': 3, 'CLASS 3': 3, 'CLASS-3': 3, 'CLASS III': 3,
+        'IV': 4, '4TH': 4, '4': 4, 'CLASS 4': 4, 'CLASS-4': 4, 'CLASS IV': 4,
+        'V': 5, '5TH': 5, '5': 5, 'CLASS 5': 5, 'CLASS-5': 5, 'CLASS V': 5,
+        'VI': 6, '6TH': 6, '6': 6, 'CLASS 6': 6, 'CLASS-6': 6, 'CLASS VI': 6,
+        'VII': 7, '7TH': 7, '7': 7, 'CLASS 7': 7, 'CLASS-7': 7, 'CLASS VII': 7,
+        'VIII': 8, '8TH': 8, '8': 8, 'CLASS 8': 8, 'CLASS-8': 8, 'CLASS VIII': 8,
+        'IX': 9, '9TH': 9, '9': 9, 'CLASS 9': 9, 'CLASS-9': 9, 'CLASS IX': 9,
+        'X': 10, '10TH': 10, '10': 10, 'CLASS 10': 10, 'CLASS-10': 10, 'CLASS X': 10,
+        'XI': 11, '11TH': 11, '11': 11, 'CLASS 11': 11, 'CLASS-11': 11, 'CLASS XI': 11,
+        'XII': 12, '12TH': 12, '12': 12, 'CLASS 12': 12, 'CLASS-12': 12, 'CLASS XII': 12,
+        'UKG': 1, 'LKG': 1, 'NURSERY': 1, 'PRIMARY': 1
+      };
+      if (romanMap[str] !== undefined) return romanMap[str];
+      const numMatch = str.match(/\d+/);
+      if (numMatch) {
+        const num = parseInt(numMatch[0], 10);
+        if (!isNaN(num)) return Math.min(12, Math.max(1, num));
+      }
+      return 10;
+    };
+
     rawRows.forEach((row, idx) => {
       const admissionNo = (row.admissionno || row.admission_no || row.admno || row.id || row.admission_number || row.admissionnumber || '').trim().toUpperCase();
       const name = (row.name || row.studentname || row.student_name || row.full_name || '').trim();
@@ -755,14 +792,14 @@ class DatabaseService {
       const rawGender = (row.gender || 'M').trim().toUpperCase();
       const gender: 'M' | 'F' = rawGender.startsWith('F') || rawGender === 'GIRL' || rawGender === 'FEMALE' ? 'F' : 'M';
 
-      const parsedClass = parseInt(row.classname || row.class_name || row.class || row.std || row.grade || '10', 10);
-      const studentClass = isNaN(parsedClass) ? 10 : Math.min(12, Math.max(1, parsedClass));
+      const rawClassVal = row.classname || row.class_name || row.class || row.std || row.grade || row.standard;
+      const studentClass = parseClassNumber(rawClassVal);
 
       const parsedRoll = parseInt(row.rollno || row.roll || row.roll_no || '1', 10);
       const rollNo = isNaN(parsedRoll) ? 1 : parsedRoll;
 
       // Flexible DOB matching for CSV headers like "Date of Birth", "DOB", "D.O.B", "Date_of_Birth", "DOB(DD-MM-YYYY)", etc.
-      const rawDobKey = Object.keys(row).find(k => 
+      const rawDobKey = Object.keys(row).find(k =>
         k.includes('dob') || k.includes('birth') || k.includes('dateof') || k.includes('bday')
       );
       const dobRaw = (rawDobKey ? row[rawDobKey] : '') || row.dateofbirth || row.date_of_birth || row.dob || row.birthdate || '';
@@ -968,7 +1005,7 @@ class DatabaseService {
       votedAt: ''
     }));
     this.recalculateCandidateVoteCounts();
-    
+
     this.systemState.totalVotesCast = 0;
     this.systemState.lastVoteTime = undefined;
 
@@ -1027,7 +1064,7 @@ class DatabaseService {
     this.candidates = INITIAL_CANDIDATES;
     this.votes = INITIAL_VOTE_RECORDS;
     this.systemState = { isVotingOpen: true, totalVotesCast: INITIAL_VOTE_RECORDS.length };
-    
+
     this.saveStudents();
     this.saveTeachers();
     this.saveCandidates();
@@ -1048,7 +1085,7 @@ class DatabaseService {
       await this.syncStudentsToFirebase().catch(e => console.error("Sync students default error:", e));
       await this.syncTeachersToFirebase().catch(e => console.error("Sync teachers default error:", e));
       await this.syncCandidatesToFirebase().catch(e => console.error("Sync candidates default error:", e));
-      
+
       for (const vote of INITIAL_VOTE_RECORDS) {
         await this.syncVoteToFirebase(vote);
       }

@@ -19,6 +19,7 @@ export const AdminDashboard: React.FC = () => {
 
   const [voterSearch, setVoterSearch] = useState('');
   const [voterFilter, setVoterFilter] = useState<'all' | 'voted' | 'pending' | 'junior' | 'senior' | 'teacher'>('all');
+  const [candidateFilter, setCandidateFilter] = useState<'all' | 'junior' | 'senior'>('all');
   
   const [auditSearch, setAuditSearch] = useState('');
   const [expandedVoteId, setExpandedVoteId] = useState<string | null>(null);
@@ -80,7 +81,20 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     refreshData();
+    dbService.ready.then(() => {
+      refreshData();
+    });
+
+    const interval = setInterval(() => {
+      refreshData();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    refreshData();
+  }, [activeTab]);
 
   const handleToggleVoting = () => {
     dbService.toggleVotingStatus();
@@ -221,7 +235,9 @@ export const AdminDashboard: React.FC = () => {
     setSelectedStudentForCand(studentId);
     const found = students.find(s => s.id === studentId || s.admissionNo.toUpperCase() === studentId.toUpperCase());
     if (found) {
-      const isJunior = found.class <= 5;
+      const isJunior = Number(found.class) <= 5;
+      const targetCouncil: CouncilType = isJunior ? 'junior' : 'senior';
+      const validPositions = targetCouncil === 'junior' ? JUNIOR_POSITIONS : SENIOR_POSITIONS;
       setNewCand(prev => ({
         ...prev,
         name: found.name,
@@ -230,8 +246,8 @@ export const AdminDashboard: React.FC = () => {
         section: found.section,
         house: found.house,
         gender: found.gender,
-        council: isJunior ? 'junior' : 'senior',
-        position: isJunior ? 'head_boy' : 'head_boy'
+        council: targetCouncil,
+        position: validPositions.includes(prev.position) ? prev.position : validPositions[0]
       }));
     }
   };
@@ -371,8 +387,8 @@ export const AdminDashboard: React.FC = () => {
                           s.admissionNo.toLowerCase().includes(voterSearch.toLowerCase());
     if (voterFilter === 'voted') return matchesSearch && s.hasVoted;
     if (voterFilter === 'pending') return matchesSearch && !s.hasVoted;
-    if (voterFilter === 'junior') return matchesSearch && s.class <= 5;
-    if (voterFilter === 'senior') return matchesSearch && s.class >= 6;
+    if (voterFilter === 'junior') return matchesSearch && Number(s.class) <= 5;
+    if (voterFilter === 'senior') return matchesSearch && (!s.class || Number(s.class) >= 6);
     if (voterFilter === 'teacher') return false;
     return matchesSearch;
   });
@@ -532,8 +548,14 @@ export const AdminDashboard: React.FC = () => {
                 <span className="text-xs font-bold uppercase tracking-wider">Junior Council</span>
                 <Award className="w-4 h-4 text-emerald-400" />
               </div>
-              <div className="text-2xl font-bold text-emerald-300 font-mono">{metrics.juniorPercentage}%</div>
-              <div className="text-[10px] text-slate-400 mt-1">{metrics.juniorVoted} / {metrics.juniorTotal} Voted</div>
+              <div className="text-2xl font-bold text-emerald-300 font-mono">
+                {metrics.juniorTotal > 0 ? `${metrics.juniorPercentage}%` : `${metrics.juniorVotesFromRecords} Votes`}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                {metrics.juniorTotal > 0
+                  ? `${metrics.juniorVoted} / ${metrics.juniorTotal} Voted (${metrics.juniorVotesFromRecords} Cast)`
+                  : `${metrics.juniorVotesFromRecords} Ballots Cast`}
+              </div>
             </div>
 
             <div className="bg-slate-900/90 border border-blue-500/30 rounded-2xl p-4 shadow-md">
@@ -541,8 +563,14 @@ export const AdminDashboard: React.FC = () => {
                 <span className="text-xs font-bold uppercase tracking-wider">Senior Council</span>
                 <Shield className="w-4 h-4 text-blue-400" />
               </div>
-              <div className="text-2xl font-bold text-blue-300 font-mono">{metrics.seniorPercentage}%</div>
-              <div className="text-[10px] text-slate-400 mt-1">{metrics.seniorVoted} / {metrics.seniorTotal} Voted</div>
+              <div className="text-2xl font-bold text-blue-300 font-mono">
+                {metrics.seniorTotal > 0 ? `${metrics.seniorPercentage}%` : `${metrics.seniorVotesFromRecords} Votes`}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                {metrics.seniorTotal > 0
+                  ? `${metrics.seniorVoted} / ${metrics.seniorTotal} Voted (${metrics.seniorVotesFromRecords} Cast)`
+                  : `${metrics.seniorVotesFromRecords} Ballots Cast`}
+              </div>
             </div>
 
           </div>
@@ -746,24 +774,66 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'candidates' && (
         <div className="space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-slate-800">
               <div>
-                <h3 className="text-xl font-bold text-white">Nominated Candidate Roster</h3>
-                <p className="text-xs text-slate-400">Add candidates manually or select directly from imported Student roster</p>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Award className="w-6 h-6 text-amber-400" />
+                  <span>Nominated Candidate Roster</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Manage Junior Wing (Classes 1-5) and Senior Wing (Classes 6-12) election candidates in separate sections
+                </p>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Council Quick Filters */}
+                <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+                  <button
+                    onClick={() => setCandidateFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      candidateFilter === 'all'
+                        ? 'bg-amber-500 text-slate-950 shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All ({candidates.length})
+                  </button>
+                  <button
+                    onClick={() => setCandidateFilter('junior')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                      candidateFilter === 'junior'
+                        ? 'bg-emerald-500 text-slate-950 shadow-md'
+                        : 'text-slate-400 hover:text-emerald-400'
+                    }`}
+                  >
+                    <Award className="w-3.5 h-3.5" />
+                    <span>Junior ({candidates.filter(c => c.council === 'junior').length})</span>
+                  </button>
+                  <button
+                    onClick={() => setCandidateFilter('senior')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                      candidateFilter === 'senior'
+                        ? 'bg-blue-500 text-slate-950 shadow-md'
+                        : 'text-slate-400 hover:text-blue-400'
+                    }`}
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Senior ({candidates.filter(c => c.council === 'senior').length})</span>
+                  </button>
+                </div>
+
                 {candidates.length > 0 && (
                   <button
                     onClick={handleClearAllCandidates}
-                    className="py-2.5 px-3.5 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/30 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition"
+                    className="py-2 px-3 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/30 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Clear All Candidates</span>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All</span>
                   </button>
                 )}
                 <button
                   onClick={() => setShowAddCandidateModal(true)}
-                  className="py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20"
+                  className="py-2 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Nominate Candidate</span>
@@ -771,33 +841,111 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {candidates.map(candidate => (
-                <div key={candidate.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 relative group">
-                  <button
-                    onClick={() => handleDeleteCandidate(candidate.id)}
-                    className="absolute top-3 right-3 text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-
-                  <div className="mb-3">
-                    <div className="font-bold text-white text-sm">{candidate.name}</div>
-                    <div className="text-[10px] text-amber-400 font-bold uppercase">{POSITION_LABELS[candidate.position]?.title}</div>
-                    <div className="text-[10px] text-slate-400">Class {candidate.class}-{candidate.section} • {candidate.house} House</div>
+            {/* SECTION 1: JUNIOR COUNCIL CANDIDATES */}
+            {(candidateFilter === 'all' || candidateFilter === 'junior') && (
+              <div className="space-y-4 mb-8">
+                <div className="flex items-center justify-between border-b border-emerald-500/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Award className="w-5 h-5 text-emerald-400" />
+                    <h4 className="text-base font-bold text-emerald-300">Junior Council Candidates (Primary Wing - Classes 1 to 5)</h4>
                   </div>
-
-                  <div className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 mb-2">
-                    "{candidate.motto}"
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
-                    <span className="capitalize font-semibold text-slate-400">{candidate.council} Council</span>
-                    <span className="font-mono font-bold text-amber-400">{candidate.votesCount} Votes</span>
-                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    {candidates.filter(c => c.council === 'junior').length} Nominees
+                  </span>
                 </div>
-              ))}
-            </div>
+
+                {candidates.filter(c => c.council === 'junior').length === 0 ? (
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-8 text-center text-xs text-slate-500 italic">
+                    No candidates nominated for Junior Council yet. Click "Nominate Candidate" to add one.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {candidates.filter(c => c.council === 'junior').map(candidate => (
+                      <div key={candidate.id} className="bg-slate-950 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl p-4 relative group transition shadow-md">
+                        <button
+                          onClick={() => handleDeleteCandidate(candidate.id)}
+                          className="absolute top-3 right-3 text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
+                        <div className="mb-3">
+                          <div className="font-bold text-white text-sm">{candidate.name}</div>
+                          <div className="text-[10px] text-emerald-400 font-bold uppercase">{POSITION_LABELS[candidate.position]?.title}</div>
+                          <div className="text-[10px] text-slate-400">Class {candidate.class}-{candidate.section} • {candidate.house} House</div>
+                        </div>
+
+                        {candidate.motto && (
+                          <div className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 mb-2">
+                            "{candidate.motto}"
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+                            Junior Council
+                          </span>
+                          <span className="font-mono font-bold text-emerald-400">{candidate.votesCount} Votes</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECTION 2: SENIOR COUNCIL CANDIDATES */}
+            {(candidateFilter === 'all' || candidateFilter === 'senior') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-blue-500/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-blue-400" />
+                    <h4 className="text-base font-bold text-blue-300">Senior Council Candidates (Senior Wing - Classes 6 to 12)</h4>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                    {candidates.filter(c => c.council === 'senior').length} Nominees
+                  </span>
+                </div>
+
+                {candidates.filter(c => c.council === 'senior').length === 0 ? (
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-8 text-center text-xs text-slate-500 italic">
+                    No candidates nominated for Senior Council yet. Click "Nominate Candidate" to add one.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {candidates.filter(c => c.council === 'senior').map(candidate => (
+                      <div key={candidate.id} className="bg-slate-950 border border-blue-500/30 hover:border-blue-500/60 rounded-2xl p-4 relative group transition shadow-md">
+                        <button
+                          onClick={() => handleDeleteCandidate(candidate.id)}
+                          className="absolute top-3 right-3 text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
+                        <div className="mb-3">
+                          <div className="font-bold text-white text-sm">{candidate.name}</div>
+                          <div className="text-[10px] text-blue-400 font-bold uppercase">{POSITION_LABELS[candidate.position]?.title}</div>
+                          <div className="text-[10px] text-slate-400">Class {candidate.class}-{candidate.section} • {candidate.house} House</div>
+                        </div>
+
+                        {candidate.motto && (
+                          <div className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 mb-2">
+                            "{candidate.motto}"
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase">
+                            Senior Council
+                          </span>
+                          <span className="font-mono font-bold text-amber-400">{candidate.votesCount} Votes</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
         </div>
@@ -1598,7 +1746,12 @@ export const AdminDashboard: React.FC = () => {
                   <label className="text-slate-300 font-bold block mb-1">Council Wing</label>
                   <select
                     value={newCand.council}
-                    onChange={e => setNewCand({...newCand, council: e.target.value as any})}
+                    onChange={e => {
+                      const council = e.target.value as CouncilType;
+                      const validPositions = council === 'junior' ? JUNIOR_POSITIONS : SENIOR_POSITIONS;
+                      const newPos = validPositions.includes(newCand.position) ? newCand.position : validPositions[0];
+                      setNewCand({ ...newCand, council, position: newPos });
+                    }}
                     className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white"
                   >
                     <option value="junior">Junior Council</option>
@@ -1614,8 +1767,8 @@ export const AdminDashboard: React.FC = () => {
                   onChange={e => setNewCand({...newCand, position: e.target.value as any})}
                   className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white"
                 >
-                  {Object.entries(POSITION_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>{v.title}</option>
+                  {(newCand.council === 'junior' ? JUNIOR_POSITIONS : SENIOR_POSITIONS).map(posKey => (
+                    <option key={posKey} value={posKey}>{POSITION_LABELS[posKey]?.title}</option>
                   ))}
                 </select>
               </div>

@@ -128,6 +128,8 @@ export const POSITION_LABELS: Record<PositionType, { title: string; gender: 'M' 
 export const JUNIOR_POSITIONS: PositionType[] = [
   'head_boy',
   'head_girl',
+  'vice_head_boy',
+  'vice_head_girl',
   'sports_captain_boy',
   'sports_captain_girl',
   'vice_sports_captain_boy',
