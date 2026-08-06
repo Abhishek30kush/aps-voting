@@ -4,7 +4,7 @@ import {
   Trash2, RefreshCcw, RotateCcw, Download, ToggleLeft, ToggleRight, Search, 
   UserPlus, TrendingUp, Upload, FileText, CheckCircle2, AlertCircle, Eye, UserCheck
 } from 'lucide-react';
-import { dbService } from '../../services/databaseService';
+import { dbService, parseTimestampMs, formatTimestampDisplay } from '../../services/databaseService';
 import type { PositionType, CouncilType, HouseType, Student, Teacher } from '../../types';
 import { POSITION_LABELS, JUNIOR_POSITIONS, SENIOR_POSITIONS } from '../../types';
 import { parseCSV, downloadCSVFile, getSampleStudentCSV, getSampleTeacherCSV } from '../../utils/csvParser';
@@ -402,12 +402,14 @@ export const AdminDashboard: React.FC = () => {
     return matchesSearch;
   });
 
-  const filteredAuditRecords = voteRecords.filter(v => {
-    const search = auditSearch.toLowerCase();
-    return v.voterName.toLowerCase().includes(search) || 
-           v.voterId.toLowerCase().includes(search) || 
-           v.id.toLowerCase().includes(search);
-  });
+  const filteredAuditRecords = [...voteRecords]
+    .sort((a, b) => parseTimestampMs(b.timestamp) - parseTimestampMs(a.timestamp))
+    .filter(v => {
+      const search = auditSearch.toLowerCase();
+      return v.voterName.toLowerCase().includes(search) || 
+             v.voterId.toLowerCase().includes(search) || 
+             v.id.toLowerCase().includes(search);
+    });
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 pb-20 animate-fade-in">
@@ -650,7 +652,7 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono">
-                        {new Date(vote.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatTimestampDisplay(vote.timestamp)}
                       </div>
                     </div>
                   ))}
@@ -1548,7 +1550,7 @@ export const AdminDashboard: React.FC = () => {
                               <span className="font-mono text-xs text-amber-300">({record.voterId})</span>
                             </div>
                             <div className="text-[11px] text-slate-400">
-                              {record.voterType.toUpperCase()} • {record.council.toUpperCase()} Council • Timestamp: {new Date(record.timestamp).toLocaleString()}
+                              {record.voterType.toUpperCase()} • {record.council.toUpperCase()} Council • Timestamp: {formatTimestampDisplay(record.timestamp, { dateStyle: 'medium', timeStyle: 'short' })}
                             </div>
                           </div>
                         </div>

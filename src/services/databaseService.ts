@@ -23,6 +23,38 @@ const NUM_TO_MONTH_SHORT: Record<string, string> = {
   '07': 'jul', '08': 'aug', '09': 'sep', '10': 'oct', '11': 'nov', '12': 'dec'
 };
 
+export function parseTimestampMs(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
+  if (typeof ts === 'string') {
+    const parsed = new Date(ts).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof ts === 'object') {
+    if (typeof ts.seconds === 'number') {
+      return ts.seconds * 1000;
+    }
+    if (typeof ts.toDate === 'function') {
+      try {
+        return ts.toDate().getTime();
+      } catch (e) {
+        return 0;
+      }
+    }
+  }
+  return 0;
+}
+
+export function formatTimestampDisplay(ts: any, options?: Intl.DateTimeFormatOptions): string {
+  const ms = parseTimestampMs(ts);
+  if (!ms) return typeof ts === 'string' ? ts : '-';
+  try {
+    return new Date(ms).toLocaleString([], options || { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+  } catch (e) {
+    return String(ts);
+  }
+}
+
 function normalizeDateVariants(str: string): string[] {
   if (!str) return [];
   const raw = str.trim().toLowerCase();
@@ -482,6 +514,7 @@ class DatabaseService {
       ? Math.round((seniorStudentVotedCount / seniorStudents.length) * 100)
       : (seniorVotesFromRecords > 0 ? 100 : 0);
 
+    (this.votes || []).sort((a, b) => parseTimestampMs(b.timestamp) - parseTimestampMs(a.timestamp));
     const lastVote = this.votes.length > 0 ? this.votes[0] : null;
 
     return {
@@ -500,7 +533,7 @@ class DatabaseService {
       seniorTotal: seniorStudents.length,
       seniorVotesFromRecords,
       lastVoteTime: lastVote ? lastVote.timestamp : undefined,
-      recentVotes: this.votes.slice(0, 10),
+      recentVotes: this.votes.slice(0, 50),
       isVotingOpen: this.systemState.isVotingOpen
     };
   }
@@ -671,7 +704,7 @@ class DatabaseService {
     });
 
     const merged = Array.from(map.values());
-    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    merged.sort((a, b) => parseTimestampMs(b.timestamp) - parseTimestampMs(a.timestamp));
     this.votes = merged;
 
     if (unSyncedVotes.length > 0) {
