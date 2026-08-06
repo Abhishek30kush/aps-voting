@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Briefcase, ArrowRight, AlertTriangle, Sparkles, KeyRound } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
@@ -15,6 +15,14 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
 }) => {
   const [teacherId, setTeacherId] = useState('');
   const [pin, setPin] = useState('');
+  const [teachers, setTeachers] = useState(() => dbService.getTeachers());
+
+  useEffect(() => {
+    const updateTeachers = () => setTeachers(dbService.getTeachers());
+    dbService.ready.then(updateTeachers);
+    const unsubscribe = dbService.subscribe(updateTeachers);
+    return () => unsubscribe();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,17 +112,17 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
         </form>
 
         {/* Dynamic Registered Teachers Shortcuts */}
-        {dbService.getTeachers().length > 0 && (
+        {teachers.length > 0 && (
           <div className="mt-8 pt-5 border-t border-slate-800">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
               <span className="flex items-center gap-1.5 font-semibold text-blue-300">
                 <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                <span>Select from Imported Teachers Roster ({dbService.getTeachers().length}):</span>
+                <span>Select from Imported Teachers Roster ({teachers.length}):</span>
               </span>
             </div>
             <select
               onChange={(e) => {
-                const selected = dbService.getTeachers().find(t => t.teacherId === e.target.value);
+                const selected = teachers.find(t => t.teacherId === e.target.value);
                 if (selected) {
                   setTeacherId(selected.teacherId);
                   if (selected.pin) setPin(selected.pin);
@@ -123,7 +131,7 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({
               className="w-full p-2.5 bg-slate-950 border border-slate-700 hover:border-blue-500/50 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-400"
             >
               <option value="">-- Choose Teacher to Auto-fill Credentials --</option>
-              {dbService.getTeachers().map(t => (
+              {teachers.map(t => (
                 <option key={t.id} value={t.teacherId}>
                   {t.name} ({t.teacherId}) - {t.designation || t.appt} [{t.hasVoted ? 'VOTED' : 'PENDING'}]
                 </option>

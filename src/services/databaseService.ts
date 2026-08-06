@@ -142,10 +142,8 @@ class DatabaseService {
 
   constructor() {
     this.initLocalData();
+    this.setupRealtimeListeners();
     this.ready = this.loadFromFirebase()
-      .then(() => {
-        this.setupRealtimeListeners();
-      })
       .catch(err => console.warn("Initial Firebase load background notice:", err));
   }
 
@@ -178,12 +176,15 @@ class DatabaseService {
 
   private saveStudents() {
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(this.students));
+    this.notifyListeners();
   }
   private saveTeachers() {
     localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(this.teachers));
+    this.notifyListeners();
   }
   private saveCandidates() {
     localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(this.candidates));
+    this.notifyListeners();
   }
   private saveVotes() {
     localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(this.votes));
@@ -191,6 +192,7 @@ class DatabaseService {
     localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
     this.recalculateCandidateVoteCounts();
     localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(this.candidates));
+    this.notifyListeners();
   }
 
   /** Dynamically recalculates candidate vote tallies from the current votes log array */
@@ -1097,6 +1099,7 @@ class DatabaseService {
   public toggleVotingStatus(isOpen?: boolean) {
     this.systemState.isVotingOpen = isOpen !== undefined ? isOpen : !this.systemState.isVotingOpen;
     localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
+    this.notifyListeners();
     if (db) {
       setDoc(doc(db, 'system', 'config'), JSON.parse(JSON.stringify(this.systemState)), { merge: true })
         .catch(e => console.error("Firebase sync system config error:", e));
