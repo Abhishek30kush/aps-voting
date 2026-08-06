@@ -435,9 +435,13 @@ class DatabaseService {
     this.saveVotes();
     console.log('[VoteSubmit] Vote saved to local storage successfully.');
 
-    // Sync vote & candidate vote tallies to Firebase asynchronously
-    this.syncVoteToFirebase(voteRecord).catch(e => console.error('Firebase vote record sync error:', e));
-    this.syncCandidatesToFirebase().catch(e => console.error('Firebase candidates sync error:', e));
+    // Sync vote & candidate vote tallies to Firebase
+    try {
+      await this.syncVoteToFirebase(voteRecord);
+      await this.syncCandidatesToFirebase();
+    } catch (e) {
+      console.warn('[VoteSubmit] Background Firebase sync warning:', e);
+    }
 
     console.log('[VoteSubmit] Vote submitted successfully!');
     return { success: true };
@@ -652,34 +656,131 @@ class DatabaseService {
     return { success: true, studentsSynced: true, teachersSynced: true };
   }
 
+  private mergeVotesWithLocal(fbVotes: VoteRecord[]) {
+    const map = new Map<string, VoteRecord>();
+    fbVotes.forEach(v => {
+      if (v && v.id) map.set(v.id, v);
+    });
+
+    const unSyncedVotes: VoteRecord[] = [];
+    (this.votes || []).forEach(localVote => {
+      if (localVote && localVote.id && !map.has(localVote.id)) {
+        map.set(localVote.id, localVote);
+        unSyncedVotes.push(localVote);
+      }
+    });
+
+    const merged = Array.from(map.values());
+    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    this.votes = merged;
+
+    if (unSyncedVotes.length > 0) {
+      console.log(`[RealtimeSync] Auto-uploading ${unSyncedVotes.length} local votes to Firestore...`);
+      unSyncedVotes.forEach(v => {
+        this.syncVoteToFirebase(v).catch(e => console.error("Auto-sync local vote error:", e));
+      });
+    }
+  }
+
+  private mergeStudentsWithLocal(fbStudents: Student[]) {
+    const map = new Map<string, Student>();
+    fbStudents.forEach(s => {
+      if (s && s.id) map.set(s.id, s);
+    });
+
+    const studentsToResync: Student[] = [];
+    (this.students || []).forEach(localStudent => {
+      if (!localStudent || !localStudent.id) return;
+      
+      const existing = map.get(localStudent.id) || Array.from(map.values()).find(s => s.admissionNo && localStudent.admissionNo && s.admissionNo.toUpperCase() === localStudent.admissionNo.toUpperCase());
+
+      if (existing) {
+        if (localStudent.hasVoted && !existing.hasVoted) {
+          existing.hasVoted = true;
+          existing.votedAt = localStudent.votedAt || existing.votedAt;
+          existing.votedCouncil = localStudent.votedCouncil || existing.votedCouncil;
+          studentsToResync.push(existing);
+        }
+      } else {
+        map.set(localStudent.id, localStudent);
+        if (localStudent.hasVoted) {
+          studentsToResync.push(localStudent);
+        }
+      }
+    });
+
+    this.students = Array.from(map.values());
+
+    if (studentsToResync.length > 0) {
+      console.log(`[RealtimeSync] Auto-uploading ${studentsToResync.length} voted student records to Firestore...`);
+      studentsToResync.forEach(s => {
+        this.syncSingleStudentToFirebase(s).catch(e => console.error("Auto-sync student error:", e));
+      });
+    }
+  }
+
+  private mergeTeachersWithLocal(fbTeachers: Teacher[]) {
+    const map = new Map<string, Teacher>();
+    fbTeachers.forEach(t => {
+      if (t && t.id) map.set(t.id, t);
+    });
+
+    const teachersToResync: Teacher[] = [];
+    (this.teachers || []).forEach(localTeacher => {
+      if (!localTeacher || !localTeacher.id) return;
+
+      const existing = map.get(localTeacher.id) || Array.from(map.values()).find(t => t.teacherId && localTeacher.teacherId && t.teacherId.toUpperCase() === localTeacher.teacherId.toUpperCase());
+
+      if (existing) {
+        if (localTeacher.hasVoted && !existing.hasVoted) {
+          existing.hasVoted = true;
+          existing.votedAt = localTeacher.votedAt || existing.votedAt;
+          teachersToResync.push(existing);
+        }
+      } else {
+        map.set(localTeacher.id, localTeacher);
+        if (localTeacher.hasVoted) {
+          teachersToResync.push(localTeacher);
+        }
+      }
+    });
+
+    this.teachers = Array.from(map.values());
+
+    if (teachersToResync.length > 0) {
+      console.log(`[RealtimeSync] Auto-uploading ${teachersToResync.length} voted teacher records to Firestore...`);
+      teachersToResync.forEach(t => {
+        this.syncSingleTeacherToFirebase(t).catch(e => console.error("Auto-sync teacher error:", e));
+      });
+    }
+  }
+
   public async loadFromFirebase(): Promise<void> {
     if (!db) return;
     try {
-      // Students — Firebase source of truth, fallback to local dataset if Firebase empty
+      // Students — Firebase source of truth
       const studentsSnap = await getDocs(collection(db, 'students'));
       const fbStudents: Student[] = [];
       studentsSnap.forEach(docSnap => {
         fbStudents.push(docSnap.data() as Student);
       });
       if (fbStudents.length > 0) {
-        this.students = fbStudents;
+        this.mergeStudentsWithLocal(fbStudents);
         this.saveStudents();
       } else if (this.students.length > 0) {
-        // Firebase has no students yet, auto-sync local students to Firebase
         this.syncStudentsToFirebase().catch(e => console.warn("Auto-sync initial students error:", e));
       }
 
-      // Teachers — Firebase source of truth, fallback to local dataset if Firebase empty
+      // Teachers — Firebase source of truth
       const teachersSnap = await getDocs(collection(db, 'teachers'));
       const fbTeachers: Teacher[] = [];
       teachersSnap.forEach(docSnap => {
         fbTeachers.push(docSnap.data() as Teacher);
       });
       if (fbTeachers.length > 0) {
-        this.teachers = fbTeachers;
+        this.mergeTeachersWithLocal(fbTeachers);
         this.saveTeachers();
       } else if (this.teachers.length > 0) {
-        // Firebase has no teachers yet, auto-sync local teachers to Firebase
         this.syncTeachersToFirebase().catch(e => console.warn("Auto-sync initial teachers error:", e));
       }
 
@@ -698,9 +799,10 @@ class DatabaseService {
       votesSnap.forEach(docSnap => {
         fbVotes.push(docSnap.data() as VoteRecord);
       });
-      fbVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      this.votes = fbVotes;
-      this.saveVotes();
+      if (fbVotes.length > 0) {
+        this.mergeVotesWithLocal(fbVotes);
+        this.saveVotes();
+      }
 
       // System Config — Firebase source of truth
       const configSnap = await getDoc(doc(db, 'system', 'config'));
@@ -737,9 +839,7 @@ class DatabaseService {
         snapshot.forEach(docSnap => {
           fbVotes.push(docSnap.data() as VoteRecord);
         });
-        fbVotes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        this.votes = fbVotes;
-        this.recalculateCandidateVoteCounts();
+        this.mergeVotesWithLocal(fbVotes);
         this.saveVotes();
         this.notifyListeners();
       }, err => console.warn("Firestore votes snapshot error:", err));
@@ -750,7 +850,7 @@ class DatabaseService {
         snapshot.forEach(docSnap => {
           fbStudents.push(docSnap.data() as Student);
         });
-        this.students = fbStudents;
+        this.mergeStudentsWithLocal(fbStudents);
         this.saveStudents();
         this.notifyListeners();
       }, err => console.warn("Firestore students snapshot error:", err));
@@ -761,7 +861,7 @@ class DatabaseService {
         snapshot.forEach(docSnap => {
           fbTeachers.push(docSnap.data() as Teacher);
         });
-        this.teachers = fbTeachers;
+        this.mergeTeachersWithLocal(fbTeachers);
         this.saveTeachers();
         this.notifyListeners();
       }, err => console.warn("Firestore teachers snapshot error:", err));
