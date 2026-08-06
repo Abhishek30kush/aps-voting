@@ -1,7 +1,8 @@
 import type { Student, Teacher, Candidate, VoteRecord, CouncilType, SystemState, PositionType, HouseType } from '../types';
 import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CANDIDATES, INITIAL_VOTE_RECORDS } from './mockData';
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase';
+import { ref, set as setRtdb, onValue } from 'firebase/database';
+import { db, rtdb } from './firebase';
 
 const MONTH_MAP: Record<string, string> = {
   jan: '01', january: '01',
@@ -152,6 +153,7 @@ class DatabaseService {
   private systemState: SystemState = { isVotingOpen: true, totalVotesCast: 0 };
   private listeners: Set<DBListener> = new Set();
   private isQuotaExceeded = false;
+  private broadcastChannel: BroadcastChannel | null = typeof window !== 'undefined' && 'BroadcastChannel' in window ? new BroadcastChannel('aps_voting_channel') : null;
 
   public getQuotaStatus(): boolean {
     return this.isQuotaExceeded;
@@ -162,11 +164,25 @@ class DatabaseService {
     if (msg.includes('quota') || msg.includes('exceeded') || msg.includes('resource_exhausted') || msg.includes('limit')) {
       if (!this.isQuotaExceeded) {
         this.isQuotaExceeded = true;
-        console.warn(`[Firebase Quota Notice] Daily usage limit reached (${context}). Resilient Local Storage mode is ACTIVE.`);
+        console.warn(`[Firebase Quota Notice] Daily usage limit reached (${context}). Resilient Local Storage mode & RTDB Fallback ACTIVE.`);
         this.notifyListeners();
       }
     } else {
       console.warn(`[Firebase Warning - ${context}]:`, err);
+    }
+  }
+
+  private notifyLocalBroadcast() {
+    this.notifyListeners();
+    try {
+      if (this.broadcastChannel) {
+        this.broadcastChannel.postMessage({ type: 'APS_DB_UPDATE', timestamp: Date.now() });
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('aps_local_vote_event', { detail: { timestamp: Date.now() } }));
+      }
+    } catch (e) {
+      console.warn("Local broadcast notice:", e);
     }
   }
 
@@ -192,9 +208,37 @@ class DatabaseService {
 
   constructor() {
     this.initLocalData();
+    this.setupLocalTabListeners();
     this.setupRealtimeListeners();
     this.ready = this.loadFromFirebase()
-      .catch(err => console.warn("Initial Firebase load background notice:", err));
+      .catch(err => this.handleFirebaseError(err, "loadFromFirebase"));
+  }
+
+  private setupLocalTabListeners() {
+    if (typeof window === 'undefined') return;
+
+    const reloadFromStorage = () => {
+      this.initLocalData();
+      this.notifyListeners();
+    };
+
+    window.addEventListener('storage', (e) => {
+      if (e.key && Object.values(STORAGE_KEYS).includes(e.key)) {
+        reloadFromStorage();
+      }
+    });
+
+    window.addEventListener('aps_local_vote_event', () => {
+      reloadFromStorage();
+    });
+
+    if (this.broadcastChannel) {
+      this.broadcastChannel.onmessage = (msg) => {
+        if (msg.data?.type === 'APS_DB_UPDATE') {
+          reloadFromStorage();
+        }
+      };
+    }
   }
 
   private initLocalData() {
@@ -226,15 +270,15 @@ class DatabaseService {
 
   private saveStudents() {
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(this.students));
-    this.notifyListeners();
+    this.notifyLocalBroadcast();
   }
   private saveTeachers() {
     localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(this.teachers));
-    this.notifyListeners();
+    this.notifyLocalBroadcast();
   }
   private saveCandidates() {
     localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(this.candidates));
-    this.notifyListeners();
+    this.notifyLocalBroadcast();
   }
   private saveVotes() {
     localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(this.votes));
@@ -242,7 +286,7 @@ class DatabaseService {
     localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
     this.recalculateCandidateVoteCounts();
     localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(this.candidates));
-    this.notifyListeners();
+    this.notifyLocalBroadcast();
   }
 
   /** Dynamically recalculates candidate vote tallies from the current votes log array */
@@ -957,6 +1001,24 @@ class DatabaseService {
     } catch (e) {
       this.handleFirebaseError(e, "setupRealtimeListeners");
     }
+
+    // 6. Real-time Fallback Listener via Firebase Realtime Database (RTDB - Unlimited daily reads fallback)
+    if (rtdb) {
+      try {
+        onValue(ref(rtdb, 'votes'), (snapshot) => {
+          const val = snapshot.val();
+          if (val) {
+            const rtdbVotes: VoteRecord[] = Object.values(val);
+            if (rtdbVotes.length > 0) {
+              this.mergeVotesWithLocal(rtdbVotes);
+              this.saveVotes();
+            }
+          }
+        }, err => console.warn("RTDB votes listener warning:", err));
+      } catch (e) {
+        console.warn("RTDB setup error:", e);
+      }
+    }
   }
 
   // --- STUDENT & TEACHER MANAGEMENT ---
@@ -1242,14 +1304,25 @@ class DatabaseService {
 
   // --- FIREBASE SYNC: VOTES & CANDIDATES ---
   public async syncVoteToFirebase(voteRecord: VoteRecord): Promise<{ success: boolean; error?: string }> {
+    // 1. Sync to Firebase Realtime Database (RTDB - Unlimited daily reads/writes fallback)
+    if (rtdb) {
+      try {
+        const cleanPayload = JSON.parse(JSON.stringify(voteRecord));
+        setRtdb(ref(rtdb, 'votes/' + voteRecord.id), cleanPayload).catch(e => console.warn("RTDB vote sync warning:", e));
+      } catch (e) {
+        console.warn("RTDB vote set error:", e);
+      }
+    }
+
+    // 2. Sync to Cloud Firestore
     if (!db) return { success: false, error: 'Firebase DB not initialized' };
     try {
-      const ref = doc(db, 'votes', voteRecord.id);
+      const refDoc = doc(db, 'votes', voteRecord.id);
       const cleanPayload = JSON.parse(JSON.stringify(voteRecord));
-      await setDoc(ref, cleanPayload);
+      await setDoc(refDoc, cleanPayload);
       return { success: true };
     } catch (e: any) {
-      console.error('Firebase vote sync error:', e);
+      this.handleFirebaseError(e, "syncVoteToFirebase");
       return { success: false, error: e?.message || String(e) };
     }
   }
