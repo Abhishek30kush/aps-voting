@@ -692,14 +692,19 @@ class DatabaseService {
   private mergeVotesWithLocal(fbVotes: VoteRecord[]) {
     const map = new Map<string, VoteRecord>();
     fbVotes.forEach(v => {
-      if (v && v.id) map.set(v.id, v);
+      const vId = v?.id || (v as any)?.docId;
+      if (v && vId) {
+        map.set(vId, { ...v, id: vId });
+      }
     });
 
     const unSyncedVotes: VoteRecord[] = [];
     (this.votes || []).forEach(localVote => {
-      if (localVote && localVote.id && !map.has(localVote.id)) {
-        map.set(localVote.id, localVote);
-        unSyncedVotes.push(localVote);
+      if (localVote && localVote.id) {
+        if (!map.has(localVote.id)) {
+          map.set(localVote.id, localVote);
+          unSyncedVotes.push(localVote);
+        }
       }
     });
 
@@ -718,7 +723,10 @@ class DatabaseService {
   private mergeStudentsWithLocal(fbStudents: Student[]) {
     const map = new Map<string, Student>();
     fbStudents.forEach(s => {
-      if (s && s.id) map.set(s.id, s);
+      const sId = s?.id || (s as any)?.docId;
+      if (s && sId) {
+        map.set(sId, { ...s, id: sId });
+      }
     });
 
     const studentsToResync: Student[] = [];
@@ -755,7 +763,10 @@ class DatabaseService {
   private mergeTeachersWithLocal(fbTeachers: Teacher[]) {
     const map = new Map<string, Teacher>();
     fbTeachers.forEach(t => {
-      if (t && t.id) map.set(t.id, t);
+      const tId = t?.id || (t as any)?.docId;
+      if (t && tId) {
+        map.set(tId, { ...t, id: tId });
+      }
     });
 
     const teachersToResync: Teacher[] = [];
@@ -795,7 +806,8 @@ class DatabaseService {
       const studentsSnap = await getDocs(collection(db, 'students'));
       const fbStudents: Student[] = [];
       studentsSnap.forEach(docSnap => {
-        fbStudents.push(docSnap.data() as Student);
+        const data = docSnap.data() || {};
+        fbStudents.push({ ...data, id: data.id || docSnap.id } as Student);
       });
       if (fbStudents.length > 0) {
         this.mergeStudentsWithLocal(fbStudents);
@@ -808,7 +820,8 @@ class DatabaseService {
       const teachersSnap = await getDocs(collection(db, 'teachers'));
       const fbTeachers: Teacher[] = [];
       teachersSnap.forEach(docSnap => {
-        fbTeachers.push(docSnap.data() as Teacher);
+        const data = docSnap.data() || {};
+        fbTeachers.push({ ...data, id: data.id || docSnap.id } as Teacher);
       });
       if (fbTeachers.length > 0) {
         this.mergeTeachersWithLocal(fbTeachers);
@@ -821,7 +834,8 @@ class DatabaseService {
       const candidatesSnap = await getDocs(collection(db, 'candidates'));
       const fbCandidates: Candidate[] = [];
       candidatesSnap.forEach(docSnap => {
-        fbCandidates.push(docSnap.data() as Candidate);
+        const data = docSnap.data() || {};
+        fbCandidates.push({ ...data, id: data.id || docSnap.id } as Candidate);
       });
       this.candidates = fbCandidates;
       this.saveCandidates();
@@ -830,7 +844,8 @@ class DatabaseService {
       const votesSnap = await getDocs(collection(db, 'votes'));
       const fbVotes: VoteRecord[] = [];
       votesSnap.forEach(docSnap => {
-        fbVotes.push(docSnap.data() as VoteRecord);
+        const data = docSnap.data() || {};
+        fbVotes.push({ ...data, id: data.id || docSnap.id } as VoteRecord);
       });
       if (fbVotes.length > 0) {
         this.mergeVotesWithLocal(fbVotes);
@@ -858,7 +873,8 @@ class DatabaseService {
       onSnapshot(collection(db, 'candidates'), (snapshot) => {
         const fbCandidates: Candidate[] = [];
         snapshot.forEach(docSnap => {
-          fbCandidates.push(docSnap.data() as Candidate);
+          const data = docSnap.data() || {};
+          fbCandidates.push({ ...data, id: data.id || docSnap.id } as Candidate);
         });
         this.candidates = fbCandidates;
         this.recalculateCandidateVoteCounts();
@@ -870,7 +886,8 @@ class DatabaseService {
       onSnapshot(collection(db, 'votes'), (snapshot) => {
         const fbVotes: VoteRecord[] = [];
         snapshot.forEach(docSnap => {
-          fbVotes.push(docSnap.data() as VoteRecord);
+          const data = docSnap.data() || {};
+          fbVotes.push({ ...data, id: data.id || docSnap.id } as VoteRecord);
         });
         this.mergeVotesWithLocal(fbVotes);
         this.saveVotes();
@@ -881,7 +898,8 @@ class DatabaseService {
       onSnapshot(collection(db, 'students'), (snapshot) => {
         const fbStudents: Student[] = [];
         snapshot.forEach(docSnap => {
-          fbStudents.push(docSnap.data() as Student);
+          const data = docSnap.data() || {};
+          fbStudents.push({ ...data, id: data.id || docSnap.id } as Student);
         });
         this.mergeStudentsWithLocal(fbStudents);
         this.saveStudents();
@@ -892,7 +910,8 @@ class DatabaseService {
       onSnapshot(collection(db, 'teachers'), (snapshot) => {
         const fbTeachers: Teacher[] = [];
         snapshot.forEach(docSnap => {
-          fbTeachers.push(docSnap.data() as Teacher);
+          const data = docSnap.data() || {};
+          fbTeachers.push({ ...data, id: data.id || docSnap.id } as Teacher);
         });
         this.mergeTeachersWithLocal(fbTeachers);
         this.saveTeachers();
