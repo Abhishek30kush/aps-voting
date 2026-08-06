@@ -151,6 +151,24 @@ class DatabaseService {
   private votes: VoteRecord[] = [];
   private systemState: SystemState = { isVotingOpen: true, totalVotesCast: 0 };
   private listeners: Set<DBListener> = new Set();
+  private isQuotaExceeded = false;
+
+  public getQuotaStatus(): boolean {
+    return this.isQuotaExceeded;
+  }
+
+  public handleFirebaseError(err: any, context: string) {
+    const msg = String(err?.message || err?.code || err || '').toLowerCase();
+    if (msg.includes('quota') || msg.includes('exceeded') || msg.includes('resource_exhausted') || msg.includes('limit')) {
+      if (!this.isQuotaExceeded) {
+        this.isQuotaExceeded = true;
+        console.warn(`[Firebase Quota Notice] Daily usage limit reached (${context}). Resilient Local Storage mode is ACTIVE.`);
+        this.notifyListeners();
+      }
+    } else {
+      console.warn(`[Firebase Warning - ${context}]:`, err);
+    }
+  }
 
   public subscribe(listener: DBListener): () => void {
     this.listeners.add(listener);
@@ -890,7 +908,7 @@ class DatabaseService {
         this.recalculateCandidateVoteCounts();
         this.saveCandidates();
         this.notifyListeners();
-      }, err => console.warn("Firestore candidates snapshot error:", err));
+      }, err => this.handleFirebaseError(err, "candidates snapshot"));
 
       // 2. Real-time Votes listener
       onSnapshot(collection(db, 'votes'), (snapshot) => {
@@ -902,7 +920,7 @@ class DatabaseService {
         this.mergeVotesWithLocal(fbVotes);
         this.saveVotes();
         this.notifyListeners();
-      }, err => console.warn("Firestore votes snapshot error:", err));
+      }, err => this.handleFirebaseError(err, "votes snapshot"));
 
       // 3. Real-time Students listener
       onSnapshot(collection(db, 'students'), (snapshot) => {
@@ -914,7 +932,7 @@ class DatabaseService {
         this.mergeStudentsWithLocal(fbStudents);
         this.saveStudents();
         this.notifyListeners();
-      }, err => console.warn("Firestore students snapshot error:", err));
+      }, err => this.handleFirebaseError(err, "students snapshot"));
 
       // 4. Real-time Teachers listener
       onSnapshot(collection(db, 'teachers'), (snapshot) => {
@@ -926,7 +944,7 @@ class DatabaseService {
         this.mergeTeachersWithLocal(fbTeachers);
         this.saveTeachers();
         this.notifyListeners();
-      }, err => console.warn("Firestore teachers snapshot error:", err));
+      }, err => this.handleFirebaseError(err, "teachers snapshot"));
 
       // 5. Real-time System Config listener
       onSnapshot(doc(db, 'system', 'config'), (docSnap) => {
@@ -935,9 +953,9 @@ class DatabaseService {
           localStorage.setItem(STORAGE_KEYS.SYSTEM, JSON.stringify(this.systemState));
           this.notifyListeners();
         }
-      }, err => console.warn("Firestore system config snapshot error:", err));
+      }, err => this.handleFirebaseError(err, "system config snapshot"));
     } catch (e) {
-      console.warn("Firestore realtime listeners setup error:", e);
+      this.handleFirebaseError(e, "setupRealtimeListeners");
     }
   }
 

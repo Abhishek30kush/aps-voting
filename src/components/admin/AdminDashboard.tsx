@@ -474,6 +474,28 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Firebase Quota Alert Banner */}
+      {dbService.getQuotaStatus() && (
+        <div className="p-4 rounded-xl text-xs font-bold bg-amber-950/80 text-amber-200 border border-amber-500/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="font-extrabold text-amber-300">⚠️ Firebase Free Daily Quota Exceeded</p>
+              <p className="font-normal text-[11px] text-amber-200/90 mt-0.5">
+                All votes cast on each device are <strong>100% SAFELY SAVED in Local Storage</strong>. To resume instant Cloud sync, upgrade to Firebase Blaze Plan in Firebase Console or wait for daily quota reset (12:30 PM IST).
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={exportSummaryCSV}
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs shrink-0 flex items-center gap-1 shadow"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export Local Votes CSV</span>
+          </button>
+        </div>
+      )}
+
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-800">
         {[
