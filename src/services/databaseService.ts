@@ -336,12 +336,12 @@ class DatabaseService {
   // --- GET CANDIDATES BY COUNCIL ---
   public getCandidatesByCouncil(council: CouncilType): Candidate[] {
     this.recalculateCandidateVoteCounts();
-    return this.candidates.filter(c => c.council === council);
+    return [...this.candidates.filter(c => c.council === council)];
   }
 
   public getAllCandidates(): Candidate[] {
     this.recalculateCandidateVoteCounts();
-    return this.candidates;
+    return [...this.candidates];
   }
 
   // --- SUBMIT VOTE ---
@@ -496,22 +496,32 @@ class DatabaseService {
       ? Math.round(((studentVotes + teacherVotes) / totalEligibleVoters) * 100)
       : 0;
 
-    const juniorStudents = this.students.filter(s => s.class && Number(s.class) <= 5);
+    const getClassNum = (rawClass: any): number => {
+      if (rawClass === undefined || rawClass === null || rawClass === '') return 10;
+      if (typeof rawClass === 'number') return rawClass;
+      const numMatch = String(rawClass).match(/\d+/);
+      if (numMatch) return parseInt(numMatch[0], 10);
+      return 10;
+    };
+
+    const juniorStudents = this.students.filter(s => getClassNum(s.class) <= 5);
+    const seniorStudents = this.students.filter(s => getClassNum(s.class) >= 6);
+
     const juniorVotesFromRecords = this.votes.filter(v => v.council === 'junior').length;
-    const juniorStudentVotedCount = juniorStudents.filter(s => s.hasVoted).length;
-    const juniorVoted = Math.max(juniorStudentVotedCount, juniorVotesFromRecords);
-
-    const juniorPercentage = juniorStudents.length > 0
-      ? Math.round((juniorStudentVotedCount / juniorStudents.length) * 100)
-      : (juniorVotesFromRecords > 0 ? 100 : 0);
-
-    const seniorStudents = this.students.filter(s => !s.class || Number(s.class) >= 6);
     const seniorVotesFromRecords = this.votes.filter(v => v.council === 'senior').length;
+
+    const juniorStudentVotedCount = juniorStudents.filter(s => s.hasVoted).length;
     const seniorStudentVotedCount = seniorStudents.filter(s => s.hasVoted).length;
+
+    const juniorVoted = Math.max(juniorStudentVotedCount, juniorVotesFromRecords);
     const seniorVoted = Math.max(seniorStudentVotedCount, seniorVotesFromRecords);
 
+    const juniorPercentage = juniorStudents.length > 0
+      ? Math.round((juniorVoted / juniorStudents.length) * 100)
+      : (juniorVotesFromRecords > 0 ? 100 : 0);
+
     const seniorPercentage = seniorStudents.length > 0
-      ? Math.round((seniorStudentVotedCount / seniorStudents.length) * 100)
+      ? Math.round((seniorVoted / seniorStudents.length) * 100)
       : (seniorVotesFromRecords > 0 ? 100 : 0);
 
     (this.votes || []).sort((a, b) => parseTimestampMs(b.timestamp) - parseTimestampMs(a.timestamp));
@@ -539,15 +549,15 @@ class DatabaseService {
   }
 
   public getStudents(): Student[] {
-    return this.students;
+    return [...this.students];
   }
 
   public getTeachers(): Teacher[] {
-    return this.teachers;
+    return [...this.teachers];
   }
 
   public getVoteRecords(): VoteRecord[] {
-    return this.votes;
+    return [...this.votes];
   }
 
   // --- CANDIDATE MANAGEMENT ---

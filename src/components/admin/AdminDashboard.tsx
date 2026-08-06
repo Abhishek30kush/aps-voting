@@ -72,11 +72,11 @@ export const AdminDashboard: React.FC = () => {
   });
 
   const refreshData = () => {
-    setMetrics(dbService.getAdminMetrics());
-    setCandidates(dbService.getAllCandidates());
-    setStudents(dbService.getStudents());
-    setTeachers(dbService.getTeachers());
-    setVoteRecords(dbService.getVoteRecords());
+    setMetrics({ ...dbService.getAdminMetrics() });
+    setCandidates([...dbService.getAllCandidates()]);
+    setStudents([...dbService.getStudents()]);
+    setTeachers([...dbService.getTeachers()]);
+    setVoteRecords([...dbService.getVoteRecords()]);
   };
 
   useEffect(() => {
