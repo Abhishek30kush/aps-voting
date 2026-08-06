@@ -529,13 +529,9 @@ class DatabaseService {
     this.saveVotes();
     console.log('[VoteSubmit] Vote saved to local storage successfully.');
 
-    // Sync vote & candidate vote tallies to Firebase
-    try {
-      await this.syncVoteToFirebase(voteRecord);
-      await this.syncCandidatesToFirebase();
-    } catch (e) {
-      console.warn('[VoteSubmit] Background Firebase sync warning:', e);
-    }
+    // Background Firebase sync (Fire-and-forget so UI is 100% instant for student/teacher)
+    this.syncVoteToFirebase(voteRecord).catch(e => console.warn('[VoteSubmit] Background vote sync notice:', e));
+    this.syncCandidatesToFirebase().catch(e => console.warn('[VoteSubmit] Background candidate sync notice:', e));
 
     console.log('[VoteSubmit] Vote submitted successfully!');
     return { success: true };
